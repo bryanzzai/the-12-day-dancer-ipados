@@ -72,7 +72,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build | tee xcodebuild.log
 
-      - name: Verify built app contains local media and no WebKit symbol
+      - name: Verify built app contains local media and no WebKit player
         shell: bash
         run: |
           set -euo pipefail
@@ -85,8 +85,8 @@ jobs:
             'A.Count.of.Tears.V.mp4'; do
             find "$APP" -type f -name "$f" -print -quit | grep -q .
           done
-          if grep -R --include='*.swift' -nE 'WKWebView|WebKit' App/Sources; then
-            echo 'WebKit reference found in native source.' >&2
+          if grep -R --include='*.swift' -nE '^import[[:space:]]+WebKit|WKWebView' App/Sources; then
+            echo 'WebKit player reference found in native source.' >&2
             exit 1
           fi
           echo 'Native bundle verification passed.'

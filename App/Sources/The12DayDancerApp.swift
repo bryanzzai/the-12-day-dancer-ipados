@@ -165,11 +165,13 @@ final class AudioPlayerModel: ObservableObject {
     init() {
         player.volume = Float(volume)
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] time in
-            guard let self else { return }
-            let now = time.seconds
-            self.currentTime = now.isFinite ? now : 0
-            if let seconds = self.player.currentItem?.duration.seconds, seconds.isFinite, seconds > 0 {
-                self.duration = seconds
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let now = time.seconds
+                self.currentTime = now.isFinite ? now : 0
+                if let seconds = self.player.currentItem?.duration.seconds, seconds.isFinite, seconds > 0 {
+                    self.duration = seconds
+                }
             }
         }
         load(index: 0, autoplay: false)
