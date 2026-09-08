@@ -17,8 +17,8 @@ targets:
       - path: App/Sources
     preBuildScripts:
       - name: Apply native UI refinements
-        path: Scripts/apply_ui_fixes.py
-        shell: /usr/bin/python3
+        path: Scripts/run_ui_fixes.sh
+        shell: /bin/bash
         basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Stage full local concert resources
