@@ -25,6 +25,10 @@ targets:
         path: Scripts/stage_resources.sh
         shell: /bin/bash
         basedOnDependencyAnalysis: false
+      - name: Stage ballerina app icon
+        path: Scripts/stage_app_icon.sh
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dk.bryanmackayne.the12daydancer
@@ -33,6 +37,7 @@ targets:
         SUPPORTS_MACCATALYST: NO
         CODE_SIGN_STYLE: Automatic
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: The 12 Day Dancer
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
