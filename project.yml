@@ -13,16 +13,7 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: App/Sources
-    resources:
-      - path: App/Resources/Alternating.Ambience.I.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.II.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.III.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.IV.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.V.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.VI.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.VII.MX.web.m4a
-      - path: App/Resources/Alternating.Ambience.VIII.MX.web.m4a
-      - path: App/Resources/A.Count.of.Tears.V.mp4
+      - path: App/Resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dk.bryanmackayne.the12daydancer
