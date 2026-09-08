@@ -15,6 +15,11 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: App/Sources
+    preBuildScripts:
+      - name: Apply native UI refinements
+        path: Scripts/apply_ui_fixes.py
+        shell: /usr/bin/python3
+        basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Stage full local concert resources
         path: Scripts/stage_resources.sh
