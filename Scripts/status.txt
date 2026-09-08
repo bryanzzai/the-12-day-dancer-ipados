@@ -1,0 +1,1 @@
+Full native build initiated after physical probe succeeded.
