@@ -107,7 +107,7 @@ function parseLanding(rootHtml) {
   for (const m of rootHtml.matchAll(anchorRe)) {
     const slug = m[1];
     const block = m[0];
-    const roman = stripTags(mustMatch(block, /<div\s+class="numberPlate">([\s\S]*?)<\/div>/, `${slug} roman`)[1]);
+    const roman = stripTags(mustMatch(block, /<(?:div|span)\s+class="numberPlate">([\s\S]*?)<\/(?:div|span)>/, `${slug} roman`)[1]);
     const displayName = stripTags(mustMatch(block, /<div\s+class="namePlate">([\s\S]*?)<\/div>/, `${slug} name`)[1]);
     const thumbClass = mustMatch(block, /class="([A-Za-z0-9]+Thumb)"/, `${slug} thumbnail class`)[1];
     const bannerPath = backgroundByClass.get(thumbClass);
