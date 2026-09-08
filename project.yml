@@ -1,6 +1,8 @@
 name: The12DayDancer
 options:
   bundleIdPrefix: dk.bryanmackayne
+  xcodeVersion: "15.2"
+  projectFormat: xcode15_0
   deploymentTarget:
     iOS: "17.0"
 settings:
