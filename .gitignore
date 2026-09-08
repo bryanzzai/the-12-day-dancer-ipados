@@ -1,0 +1,7 @@
+App/Resources/*
+!App/Resources/.gitkeep
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+The12DayDancer.xcodeproj/

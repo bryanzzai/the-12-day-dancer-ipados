@@ -1,0 +1,135 @@
+name: Build native iPadOS probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout native app source
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Fetch bundled local media
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf App/Resources
+          mkdir -p App/Resources
+
+          gh release download dies-apri \
+            --repo bryanzzai/bryanmackayne \
+            --pattern '*.web.m4a' \
+            --dir App/Resources \
+            --clobber
+
+          gh release download dies-akita \
+            --repo bryanzzai/bryanmackayne \
+            --pattern 'A.Count.of.Tears.V.mp4' \
+            --dir App/Resources \
+            --clobber
+
+          audio_count=$(find App/Resources -maxdepth 1 -type f -name '*.web.m4a' | wc -l | tr -d ' ')
+          video_count=$(find App/Resources -maxdepth 1 -type f -name '*.mp4' | wc -l | tr -d ' ')
+          test "$audio_count" = 8
+          test "$video_count" = 1
+          echo "Bundled media staged: $audio_count audio + $video_count video"
+          du -sh App/Resources
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+          test -d The12DayDancer.xcodeproj
+
+      - name: Compile for iPad Simulator
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project The12DayDancer.xcodeproj \
+            -scheme The12DayDancer \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log
+
+      - name: Verify built app contains local media and no WebKit symbol
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Build/Products/Debug-iphonesimulator/The 12 Day Dancer.app' -print -quit)
+          test -n "$APP"
+          echo "Built app: $APP"
+          for f in \
+            'Alternating.Ambience.I.MX.web.m4a' \
+            'Alternating.Ambience.VIII.MX.web.m4a' \
+            'A.Count.of.Tears.V.mp4'; do
+            find "$APP" -type f -name "$f" -print -quit | grep -q .
+          done
+          if grep -R --include='*.swift' -nE 'WKWebView|WebKit' App/Sources; then
+            echo 'WebKit reference found in native source.' >&2
+            exit 1
+          fi
+          echo 'Native bundle verification passed.'
+
+      - name: Package ready-to-open Xcode probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf delivery
+          mkdir -p delivery/The-12-Day-Dancer-iPadOS-Probe
+          rsync -a \
+            --exclude='.git' \
+            --exclude='delivery' \
+            --exclude='xcodebuild.log' \
+            ./ delivery/The-12-Day-Dancer-iPadOS-Probe/
+          cp xcodebuild.log delivery/The-12-Day-Dancer-iPadOS-Probe/XCODEBUILD-GREEN.log
+          cat > delivery/The-12-Day-Dancer-iPadOS-Probe/OPEN-ME-FIRST.txt <<'TXT'
+          THE 12 DAY DANCER — NATIVE IPADOS PROBE
+
+          This exact Xcode project was generated and compiled successfully on GitHub's macOS runner.
+          It contains eight Dies Apri M4A tracks and one Dies Akita / Brumbrum MP4 as local app resources.
+
+          On the Mac:
+          1. Open The12DayDancer.xcodeproj in Xcode.
+          2. Connect Bryan's iPad Pro.
+          3. Select the The12DayDancer target -> Signing & Capabilities -> Team -> Bryan's Personal Team.
+          4. Choose the connected iPad as the Run destination.
+          5. Press the Run triangle.
+
+          If the iPad asks for Developer Mode, enable it and follow Apple's restart prompt.
+
+          The app's media layer is AVFoundation/AVKit. There is no WKWebView and no WebKit audio/video player.
+          TXT
+          ditto -c -k --sequesterRsrc --keepParent \
+            delivery/The-12-Day-Dancer-iPadOS-Probe \
+            delivery/The-12-Day-Dancer-iPadOS-Probe.zip
+          ls -lh delivery/The-12-Day-Dancer-iPadOS-Probe.zip
+
+      - name: Upload native probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-12-Day-Dancer-iPadOS-Probe
+          path: delivery/The-12-Day-Dancer-iPadOS-Probe.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
