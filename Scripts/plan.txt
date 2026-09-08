@@ -1,0 +1,1 @@
+Parse current album player HTML and Releases at build time; generate a native Swift catalog; stage artwork and browser media; build/package Xcode 15.2-compatible iPadOS app.
