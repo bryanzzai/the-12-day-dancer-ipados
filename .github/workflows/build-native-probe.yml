@@ -1,4 +1,4 @@
-name: Build native iPadOS probe
+name: Build full native iPadOS concert house
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
 
@@ -28,41 +28,83 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Fetch bundled local media
+      - name: Checkout current concert-house source of truth
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf App/Resources
-          mkdir -p App/Resources
+          SOURCE_SITE="$RUNNER_TEMP/bryanmackayne-source"
+          rm -rf "$SOURCE_SITE"
+          git clone --depth 1 https://github.com/bryanzzai/bryanmackayne.git "$SOURCE_SITE"
+          git -C "$SOURCE_SITE" rev-parse HEAD | tee SOURCE-SITE-COMMIT.txt
 
-          gh release download dies-apri \
-            --repo bryanzzai/bryanmackayne \
-            --pattern '*.web.m4a' \
-            --dir App/Resources \
-            --clobber
-
+      - name: Download all browser media from the 12 Releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          MEDIA_ROOT="$RUNNER_TEMP/full-native-media"
+          rm -rf "$MEDIA_ROOT"
+          mkdir -p "$MEDIA_ROOT"
+          audio_albums=(
+            dies-iovis dies-solis dies-martis dies-albini dies-tigris dies-delfini
+            dies-canis dies-felis dies-tauri dies-ursi dies-apri
+          )
+          for album in "${audio_albums[@]}"; do
+            echo "Downloading audio release: $album"
+            mkdir -p "$MEDIA_ROOT/$album"
+            gh release download "$album" \
+              --repo bryanzzai/bryanmackayne \
+              --pattern '*.web.m4a' \
+              --dir "$MEDIA_ROOT/$album" \
+              --clobber
+          done
+          mkdir -p "$MEDIA_ROOT/dies-akita"
           gh release download dies-akita \
             --repo bryanzzai/bryanmackayne \
-            --pattern 'A.Count.of.Tears.V.mp4' \
-            --dir App/Resources \
+            --pattern '*.mp4' \
+            --dir "$MEDIA_ROOT/dies-akita" \
             --clobber
 
-          audio_count=$(find App/Resources -maxdepth 1 -type f -name '*.web.m4a' | wc -l | tr -d ' ')
-          video_count=$(find App/Resources -maxdepth 1 -type f -name '*.mp4' | wc -l | tr -d ' ')
-          test "$audio_count" = 8
-          test "$video_count" = 1
-          echo "Bundled media staged: $audio_count audio + $video_count video"
-          du -sh App/Resources
+          audio_count=$(find "$MEDIA_ROOT" -type f -name '*.web.m4a' | wc -l | tr -d ' ')
+          video_count=$(find "$MEDIA_ROOT" -type f -name '*.mp4' | wc -l | tr -d ' ')
+          originals=$(find "$MEDIA_ROOT" -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')
+          test "$audio_count" = 229
+          test "$video_count" = 9
+          test "$originals" = 0
+          echo "Downloaded source media: $audio_count web M4A + $video_count MP4; original M4A: $originals"
+          du -sh "$MEDIA_ROOT"
 
-      - name: Generate Xcode project
+      - name: Generate exact native catalog and resource manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node Scripts/generate_full_catalog.mjs \
+            --source "$RUNNER_TEMP/bryanmackayne-source" \
+            --media-root "$RUNNER_TEMP/full-native-media" \
+            --ci-resource-dir "$PWD/ci-resources" \
+            --output-swift "$PWD/App/Sources/Catalog.generated.swift" \
+            --output-manifest "$PWD/App/Generated/ResourceManifest.tsv" \
+            --output-report "$PWD/App/Generated/CatalogReport.txt"
+          cat App/Generated/CatalogReport.txt
+          test "$(find ci-resources -maxdepth 1 -type f -name '*__audio__*.web.m4a' | wc -l | tr -d ' ')" = 229
+          test "$(find ci-resources -maxdepth 1 -type f -name '*__video__*.mp4' | wc -l | tr -d ' ')" = 9
+          test "$(find ci-resources -maxdepth 1 -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')" = 0
+
+      - name: Generate Xcode 15 compatible project
         run: |
           xcodegen generate
           test -d The12DayDancer.xcodeproj
+          grep -q 'objectVersion = 60;' The12DayDancer.xcodeproj/project.pbxproj
+          grep -q 'compatibilityVersion = "Xcode 15.0";' The12DayDancer.xcodeproj/project.pbxproj
+          if grep -q 'preferredProjectObjectVersion' The12DayDancer.xcodeproj/project.pbxproj; then
+            echo 'Xcode 16 preferredProjectObjectVersion leaked into Xcode 15 project.' >&2
+            exit 1
+          fi
 
-      - name: Compile for iPad Simulator
+      - name: Compile complete native app
         shell: bash
         run: |
           set -o pipefail
+          THE12_PRESTAGED_RESOURCES="$PWD/ci-resources" \
           xcodebuild \
             -project The12DayDancer.xcodeproj \
             -scheme The12DayDancer \
@@ -70,66 +112,108 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            build | tee xcodebuild.log
+            build | tee xcodebuild-full.log
 
-      - name: Verify built app contains local media and no WebKit player
+      - name: Verify complete built app
         shell: bash
         run: |
           set -euo pipefail
           APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Build/Products/Debug-iphonesimulator/The 12 Day Dancer.app' -print -quit)
           test -n "$APP"
-          echo "Built app: $APP"
-          for f in \
-            'Alternating.Ambience.I.MX.web.m4a' \
-            'Alternating.Ambience.VIII.MX.web.m4a' \
-            'A.Count.of.Tears.V.mp4'; do
-            find "$APP" -type f -name "$f" -print -quit | grep -q .
-          done
+          RES="$APP/ConcertResources"
+          test -d "$RES"
+
+          audio_count=$(find "$RES" -maxdepth 1 -type f -name '*__audio__*.web.m4a' | wc -l | tr -d ' ')
+          video_count=$(find "$RES" -maxdepth 1 -type f -name '*__video__*.mp4' | wc -l | tr -d ' ')
+          original_count=$(find "$RES" -maxdepth 1 -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')
+          art_count=$(find "$RES" -maxdepth 1 -type f -name '*__art__*' | wc -l | tr -d ' ')
+          banner_count=$(find "$RES" -maxdepth 1 -type f -name '*__banner__*' | wc -l | tr -d ' ')
+          portrait_count=$(find "$RES" -maxdepth 1 -type f -name '*__portrait__*' | wc -l | tr -d ' ')
+
+          test "$audio_count" = 229
+          test "$video_count" = 9
+          test "$original_count" = 0
+          test "$art_count" = 229
+          test "$banner_count" = 12
+          test "$portrait_count" = 12
+          test -s "$RES/facade__background__bulgarian-ballerina.png"
+          test -s "$RES/SOURCE-SITE-COMMIT.txt"
+
           if grep -R --include='*.swift' -nE '^import[[:space:]]+WebKit|WKWebView' App/Sources; then
             echo 'WebKit player reference found in native source.' >&2
             exit 1
           fi
-          echo 'Native bundle verification passed.'
+          if grep -R --include='*.swift' -n 'Play Brumbrum' App/Sources; then
+            echo 'Probe-only Play Brumbrum label leaked into final UI.' >&2
+            exit 1
+          fi
 
-      - name: Package ready-to-open Xcode probe
+          echo "Built app: $APP"
+          echo "Native validation: 12 albums; $audio_count web M4A; $video_count MP4; $art_count artworks; $banner_count banners; $portrait_count portraits; 0 original M4A; no WebKit; no probe Brumbrum label."
+          du -sh "$APP"
+
+      - name: Package ready-to-open Xcode 15.2 project
         shell: bash
         run: |
           set -euo pipefail
           rm -rf delivery
-          mkdir -p delivery/The-12-Day-Dancer-iPadOS-Probe
+          ROOT=delivery/The-12-Day-Dancer-iPadOS-FULL
+          mkdir -p "$ROOT"
+
           rsync -a \
             --exclude='.git' \
+            --exclude='.github' \
             --exclude='delivery' \
-            --exclude='xcodebuild.log' \
-            ./ delivery/The-12-Day-Dancer-iPadOS-Probe/
-          cp xcodebuild.log delivery/The-12-Day-Dancer-iPadOS-Probe/XCODEBUILD-GREEN.log
-          cat > delivery/The-12-Day-Dancer-iPadOS-Probe/OPEN-ME-FIRST.txt <<'TXT'
-          THE 12 DAY DANCER — NATIVE IPADOS PROBE
+            --exclude='ci-resources' \
+            --exclude='App/Resources' \
+            --exclude='xcodebuild-full.log' \
+            ./ "$ROOT/"
 
-          This exact Xcode project was generated and compiled successfully on GitHub's macOS runner.
-          It contains eight Dies Apri M4A tracks and one Dies Akita / Brumbrum MP4 as local app resources.
+          cp xcodebuild-full.log "$ROOT/XCODEBUILD-FULL-GREEN.log"
+          cp SOURCE-SITE-COMMIT.txt "$ROOT/SOURCE-SITE-COMMIT.txt"
 
-          On the Mac:
-          1. Open The12DayDancer.xcodeproj in Xcode.
-          2. Connect Bryan's iPad Pro.
-          3. Select the The12DayDancer target -> Signing & Capabilities -> Team -> Bryan's Personal Team.
-          4. Choose the connected iPad as the Run destination.
-          5. Press the Run triangle.
+          cat > "$ROOT/OPEN-ME-FIRST.txt" <<'TXT'
+          THE 12 DAY DANCER — FULL NATIVE IPADOS CONCERT HOUSE
 
-          If the iPad asks for Developer Mode, enable it and follow Apple's restart prompt.
+          This exact project was generated and compiled successfully by GitHub Actions.
+          The CI build physically contained and verified:
+            - all 12 concert halls
+            - 229 browser-ready *.web.m4a audio files
+            - all 9 Dies Akita MP4 films
+            - 229 track artworks
+            - 12 banners + 12 portraits + the Bulgarian ballerina facade
+            - 0 original/non-web M4A files
+            - no WebKit / no WKWebView player
 
-          The app's media layer is AVFoundation/AVKit. There is no WKWebView and no WebKit audio/video player.
+          This READY package deliberately does NOT carry the roughly 3 GB of media.
+          On the first local Xcode build, the project's final build phase downloads the exact
+          pinned resources into a Mac cache and bakes them into the signed .app before install.
+          Later rebuilds/re-signs reuse that cache instead of downloading everything again.
+          The installed iPad app itself is fully local/offline for playback.
+
+          On Bryan's Ventura Mac with Xcode 15.2:
+          1. Open The12DayDancer.xcodeproj.
+          2. Select the The12DayDancer target -> Signing & Capabilities -> Bryan's Personal Team.
+          3. Connect/select the physical iPad Pro.
+          4. Press Run.
+          5. The FIRST Run can take a while because Xcode is filling the local concert cache.
+             Do not stop it merely because the build phase is downloading many resources.
+          6. When installed, test several audio halls and Dies Akita video.
+
+          Xcode project format is pinned to Xcode 15.0/15.2 compatibility (objectVersion 60).
+          Deployment target is iPadOS 17.0. The app is iPad-only.
           TXT
-          ditto -c -k --sequesterRsrc --keepParent \
-            delivery/The-12-Day-Dancer-iPadOS-Probe \
-            delivery/The-12-Day-Dancer-iPadOS-Probe.zip
-          ls -lh delivery/The-12-Day-Dancer-iPadOS-Probe.zip
 
-      - name: Upload native probe
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$ROOT" \
+            delivery/The-12-Day-Dancer-iPadOS-FULL-Xcode15.2-READY.zip
+          ls -lh delivery/The-12-Day-Dancer-iPadOS-FULL-Xcode15.2-READY.zip
+
+      - name: Upload full native Xcode project
         uses: actions/upload-artifact@v4
         with:
-          name: The-12-Day-Dancer-iPadOS-Probe
-          path: delivery/The-12-Day-Dancer-iPadOS-Probe.zip
+          name: The-12-Day-Dancer-iPadOS-FULL-Xcode15.2-READY
+          path: delivery/The-12-Day-Dancer-iPadOS-FULL-Xcode15.2-READY.zip
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 6
           retention-days: 30
