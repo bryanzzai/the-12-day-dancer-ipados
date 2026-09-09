@@ -13,47 +13,34 @@ if [[ -z "$SOURCE_COMMIT" ]]; then
   exit 1
 fi
 
+BOOTSTRAP_NAME="facade__background__bulgarian-ballerina.png"
+BOOTSTRAP_URL=$(awk -F '\t' -v name="$BOOTSTRAP_NAME" '$3 == name {print $4; exit}' "$MANIFEST")
+if [[ -z "$BOOTSTRAP_URL" ]]; then
+  echo "Bootstrap facade not found in resource manifest: $BOOTSTRAP_NAME" >&2
+  exit 1
+fi
+
 DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ConcertResources"
 CACHE_ROOT="${HOME}/Library/Caches/The12DayDancer/${SOURCE_COMMIT}"
-mkdir -p "$DEST" "$CACHE_ROOT"
+CACHE_FILE="$CACHE_ROOT/$BOOTSTRAP_NAME"
+mkdir -p "$CACHE_ROOT"
 
-TOTAL=$(grep -v '^#' "$MANIFEST" | grep -c $'\t' || true)
-INDEX=0
-AUDIO_EXPECTED=229
-VIDEO_EXPECTED=9
+# SideStore Lite must never inherit a previous full-resource build from DerivedData.
+rm -rf "$DEST"
+mkdir -p "$DEST"
 
-copy_fast() {
-  local source="$1"
-  local target="$2"
-  rm -f "$target"
-  if cp -c "$source" "$target" 2>/dev/null; then
-    return 0
+if [[ -n "${THE12_PRESTAGED_RESOURCES:-}" ]]; then
+  SOURCE="${THE12_PRESTAGED_RESOURCES}/$BOOTSTRAP_NAME"
+  if [[ ! -s "$SOURCE" ]]; then
+    echo "Missing CI prestaged bootstrap resource: $SOURCE" >&2
+    exit 1
   fi
-  cp "$source" "$target"
-}
-
-while IFS=$'\t' read -r KIND ALBUM BUNDLE_NAME URL SOURCE_PATH; do
-  [[ -z "${KIND:-}" ]] && continue
-  [[ "$KIND" == \#* ]] && continue
-  INDEX=$((INDEX + 1))
-  TARGET="$DEST/$BUNDLE_NAME"
-
-  if [[ -n "${THE12_PRESTAGED_RESOURCES:-}" ]]; then
-    SOURCE="${THE12_PRESTAGED_RESOURCES}/$BUNDLE_NAME"
-    if [[ ! -s "$SOURCE" ]]; then
-      echo "Missing CI prestaged resource: $SOURCE" >&2
-      exit 1
-    fi
-    echo "[$INDEX/$TOTAL] staging $KIND · $ALBUM · $BUNDLE_NAME"
-    copy_fast "$SOURCE" "$TARGET"
-    continue
-  fi
-
-  CACHE_FILE="$CACHE_ROOT/$BUNDLE_NAME"
+  cp "$SOURCE" "$DEST/$BOOTSTRAP_NAME"
+else
   if [[ ! -s "$CACHE_FILE" ]]; then
     TMP="${CACHE_FILE}.download"
     rm -f "$TMP"
-    echo "[$INDEX/$TOTAL] downloading $KIND · $ALBUM · $BUNDLE_NAME"
+    echo "Downloading SideStore Lite bootstrap facade"
     /usr/bin/curl \
       --location \
       --fail \
@@ -63,35 +50,28 @@ while IFS=$'\t' read -r KIND ALBUM BUNDLE_NAME URL SOURCE_PATH; do
       --retry-delay 2 \
       --connect-timeout 30 \
       --output "$TMP" \
-      "$URL"
-    if [[ ! -s "$TMP" ]]; then
-      echo "Downloaded resource is empty: $URL" >&2
-      exit 1
-    fi
+      "$BOOTSTRAP_URL"
+    test -s "$TMP"
     mv "$TMP" "$CACHE_FILE"
   else
-    echo "[$INDEX/$TOTAL] cached $KIND · $ALBUM · $BUNDLE_NAME"
+    echo "Using cached SideStore Lite bootstrap facade"
   fi
-  copy_fast "$CACHE_FILE" "$TARGET"
-done < "$MANIFEST"
-
-AUDIO_COUNT=$(find "$DEST" -maxdepth 1 -type f -name '*__audio__*.web.m4a' | wc -l | tr -d ' ')
-VIDEO_COUNT=$(find "$DEST" -maxdepth 1 -type f -name '*__video__*.mp4' | wc -l | tr -d ' ')
-ORIGINAL_COUNT=$(find "$DEST" -maxdepth 1 -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')
-RESOURCE_COUNT=$(find "$DEST" -maxdepth 1 -type f | wc -l | tr -d ' ')
-
-if [[ "$AUDIO_COUNT" != "$AUDIO_EXPECTED" ]]; then
-  echo "Native bundle audio count is $AUDIO_COUNT; expected $AUDIO_EXPECTED." >&2
-  exit 1
-fi
-if [[ "$VIDEO_COUNT" != "$VIDEO_EXPECTED" ]]; then
-  echo "Native bundle video count is $VIDEO_COUNT; expected $VIDEO_EXPECTED." >&2
-  exit 1
-fi
-if [[ "$ORIGINAL_COUNT" != "0" ]]; then
-  echo "Original/non-web M4A slipped into native bundle: $ORIGINAL_COUNT" >&2
-  exit 1
+  cp "$CACHE_FILE" "$DEST/$BOOTSTRAP_NAME"
 fi
 
 printf '%s\n' "$SOURCE_COMMIT" > "$DEST/SOURCE-SITE-COMMIT.txt"
-echo "Full local concert resources staged: $RESOURCE_COUNT files + source marker; $AUDIO_COUNT web M4A + $VIDEO_COUNT MP4; 0 original M4A."
+
+audio_count=$(find "$DEST" -maxdepth 1 -type f -name '*.m4a' | wc -l | tr -d ' ')
+video_count=$(find "$DEST" -maxdepth 1 -type f -name '*.mp4' | wc -l | tr -d ' ')
+file_count=$(find "$DEST" -maxdepth 1 -type f | wc -l | tr -d ' ')
+
+if [[ "$audio_count" != "0" || "$video_count" != "0" ]]; then
+  echo "SideStore Lite accidentally staged media: audio=$audio_count video=$video_count" >&2
+  exit 1
+fi
+if [[ "$file_count" != "2" ]]; then
+  echo "SideStore Lite bootstrap should contain exactly facade + source marker; found $file_count files." >&2
+  exit 1
+fi
+
+echo "SideStore Lite bootstrap staged: ballerina facade + source marker; 0 audio; 0 video."
