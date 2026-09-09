@@ -16,10 +16,24 @@ private let akitaThumbnailTimes: [String: Double] = [
 
 private func thumbnailResourceURL(_ name: String) -> URL? {
     guard !name.isEmpty else { return nil }
-    let url = Bundle.main.bundleURL
+    let manager = FileManager.default
+
+    // SideStore Lite keeps the concert cargo outside the signed app bundle.
+    // Poster frames must therefore resolve the MP4 from Documents/ConcertResources
+    // before falling back to bundled resources, exactly like normal playback.
+    if let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first {
+        let externalURL = documents
+            .appendingPathComponent("ConcertResources", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: false)
+        if manager.fileExists(atPath: externalURL.path) {
+            return externalURL
+        }
+    }
+
+    let bundledURL = Bundle.main.bundleURL
         .appendingPathComponent("ConcertResources", isDirectory: true)
         .appendingPathComponent(name, isDirectory: false)
-    return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    return manager.fileExists(atPath: bundledURL.path) ? bundledURL : nil
 }
 
 struct FilmThumbnailView: View {
