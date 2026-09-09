@@ -1,0 +1,187 @@
+name: Build SideStore permanent media pack
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sidestore-lite]
+    paths:
+      - '.github/workflows/build-sidestore-media-pack.yml'
+      - 'Scripts/generate_full_catalog.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  build-media-pack:
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_COMMIT: 7dca9bdc40bb941f7133623f5711de945b2d0cdc
+      PACK_NAME: The-12-Day-Dancer-Media-Pack-v1
+
+    steps:
+      - name: Checkout SideStore Lite source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned concert-house authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SITE="$RUNNER_TEMP/bryanmackayne-source"
+          rm -rf "$SOURCE_SITE"
+          git clone https://github.com/bryanzzai/bryanmackayne.git "$SOURCE_SITE"
+          git -C "$SOURCE_SITE" checkout --detach "$SOURCE_COMMIT"
+          ACTUAL=$(git -C "$SOURCE_SITE" rev-parse HEAD)
+          test "$ACTUAL" = "$SOURCE_COMMIT"
+          printf '%s\n' "$ACTUAL" | tee SOURCE-SITE-COMMIT.txt
+
+      - name: Download exact release media
+        shell: bash
+        run: |
+          set -euo pipefail
+          MEDIA_ROOT="$RUNNER_TEMP/full-native-media"
+          rm -rf "$MEDIA_ROOT"
+          mkdir -p "$MEDIA_ROOT"
+
+          audio_albums=(
+            dies-iovis dies-solis dies-martis dies-albini dies-tigris dies-delfini
+            dies-canis dies-felis dies-tauri dies-ursi dies-apri
+          )
+
+          for album in "${audio_albums[@]}"; do
+            mkdir -p "$MEDIA_ROOT/$album"
+            gh release download "$album" \
+              --repo bryanzzai/bryanmackayne \
+              --pattern '*.web.m4a' \
+              --dir "$MEDIA_ROOT/$album" \
+              --clobber
+          done
+
+          mkdir -p "$MEDIA_ROOT/dies-akita"
+          gh release download dies-akita \
+            --repo bryanzzai/bryanmackayne \
+            --pattern '*.mp4' \
+            --dir "$MEDIA_ROOT/dies-akita" \
+            --clobber
+
+          AUDIO=$(find "$MEDIA_ROOT" -type f -name '*.web.m4a' | wc -l | tr -d ' ')
+          VIDEO=$(find "$MEDIA_ROOT" -type f -name '*.mp4' | wc -l | tr -d ' ')
+          ORIGINAL=$(find "$MEDIA_ROOT" -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')
+          test "$AUDIO" = 229
+          test "$VIDEO" = 9
+          test "$ORIGINAL" = 0
+          echo "Release media authority: 229 web M4A + 9 MP4; 0 original M4A."
+
+      - name: Assemble ConcertResources from authoritative catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/$PACK_NAME"
+          CR="$ROOT/ConcertResources"
+          rm -rf "$ROOT"
+          mkdir -p "$CR"
+
+          node Scripts/generate_full_catalog.mjs \
+            --source "$RUNNER_TEMP/bryanmackayne-source" \
+            --media-root "$RUNNER_TEMP/full-native-media" \
+            --ci-resource-dir "$CR" \
+            --output-swift "$RUNNER_TEMP/Catalog.generated.swift" \
+            --output-manifest "$RUNNER_TEMP/ResourceManifest.tsv" \
+            --output-report "$ROOT/BUILD-REPORT.txt"
+
+          printf '%s\n' "$SOURCE_COMMIT" > "$CR/SOURCE-SITE-COMMIT.txt"
+
+          AUDIO=$(find "$CR" -maxdepth 1 -type f -name '*__audio__*.web.m4a' | wc -l | tr -d ' ')
+          VIDEO=$(find "$CR" -maxdepth 1 -type f -name '*__video__*.mp4' | wc -l | tr -d ' ')
+          ORIGINAL=$(find "$CR" -maxdepth 1 -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')
+          TOTAL=$(find "$CR" -maxdepth 1 -type f | wc -l | tr -d ' ')
+          IMAGES=$((TOTAL - AUDIO - VIDEO - 1))
+
+          test "$AUDIO" = 229
+          test "$VIDEO" = 9
+          test "$ORIGINAL" = 0
+          test "$IMAGES" = 254
+          test "$TOTAL" = 493
+
+          cat >> "$ROOT/BUILD-REPORT.txt" <<REPORT
+          ConcertResources after source marker: $TOTAL files
+          Audio: $AUDIO web M4A
+          Video: $VIDEO MP4
+          Images: $IMAGES
+          Original/non-web M4A: $ORIGINAL
+          Expected runtime destination: The 12 Day Dancer/Documents/ConcertResources
+          REPORT
+
+      - name: Add reconstruction instructions and SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/$PACK_NAME"
+
+          cat > "$ROOT/INSTALL-README.txt" <<'TXT'
+          THE 12 DAY DANCER — PERMANENT MEDIA PACK v1
+
+          This package is the separate concert cargo for the SideStore Lite build.
+          It is NOT an IPA and must never be placed inside the signed app bundle.
+
+          Reconstruction / new-device procedure:
+          1. Build or obtain The-12-Day-Dancer-Lite.ipa on M/S Ventura.
+          2. Transfer the small IPA to the iPad/iPhone and install it with SideStore.
+          3. Confirm The 12 Day Dancer launches and SideStore refresh succeeds.
+          4. Connect the device to M/S Ventura by USB.
+          5. Finder -> device -> Files -> The 12 Day Dancer.
+          6. Open the app's visible Documents area.
+          7. Copy the complete ConcertResources folder from this package into that area.
+             The final path must be Documents/ConcertResources, not a nested duplicate.
+          8. Launch The 12 Day Dancer and test audio, artwork and Dies Akita video.
+          9. Refresh The 12 Day Dancer in SideStore and verify the media remains playable.
+
+          Expected ConcertResources payload:
+          - 229 *.web.m4a
+          - 9 *.mp4
+          - 254 images (facade, banners, portraits and artwork)
+          - SOURCE-SITE-COMMIT.txt
+          - 493 files total
+          - 0 original/non-web M4A
+
+          The SideStore Lite runtime looks in Documents/ConcertResources first.
+          The media pack is shared by all compatible Dancer Lite installations.
+
+          Source-of-truth concert-house commit:
+          7dca9bdc40bb941f7133623f5711de945b2d0cdc
+          TXT
+
+          (
+            cd "$ROOT"
+            find . -type f ! -name 'MANIFEST-SHA256.txt' -print0 \
+              | LC_ALL=C sort -z \
+              | xargs -0 shasum -a 256 > MANIFEST-SHA256.txt
+            shasum -a 256 -c MANIFEST-SHA256.txt
+          )
+
+      - name: Package permanent media pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/$PACK_NAME"
+          OUT="$GITHUB_WORKSPACE/$PACK_NAME.zip"
+          rm -f "$OUT" "$OUT.sha256"
+
+          cd "$RUNNER_TEMP"
+          /usr/bin/zip -qry "$OUT" "$PACK_NAME"
+          test -s "$OUT"
+          /usr/bin/unzip -t "$OUT" | tail -3
+          shasum -a 256 "$OUT" | tee "$OUT.sha256"
+          ls -lh "$OUT" "$OUT.sha256"
+
+      - name: Upload permanent media pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-12-Day-Dancer-Media-Pack-v1
+          path: |
+            The-12-Day-Dancer-Media-Pack-v1.zip
+            The-12-Day-Dancer-Media-Pack-v1.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
