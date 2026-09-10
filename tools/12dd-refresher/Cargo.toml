@@ -1,5 +1,5 @@
 [package]
-name = "12dd-refresher"
+name = "twelvedd-refresher"
 version = "0.1.0"
 edition = "2024"
 description = "A tiny Windows-side refresher for The 12 Day Dancer"
