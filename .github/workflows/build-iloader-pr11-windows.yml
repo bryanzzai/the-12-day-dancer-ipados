@@ -1,0 +1,73 @@
+name: Build patched iLoader Windows
+
+on:
+  push:
+    branches:
+      - iloader-pr11-windows
+    paths:
+      - .github/workflows/build-iloader-pr11-windows.yml
+  workflow_dispatch:
+
+jobs:
+  build-iloader-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout iLoader 2.3.1
+        uses: actions/checkout@v6
+        with:
+          repository: nab138/iloader
+          ref: v2.3.1
+          path: iloader
+
+      - name: Patch isideload dependency to PR 11
+        shell: pwsh
+        run: |
+          $p = 'iloader/src-tauri/Cargo.toml'
+          $s = Get-Content $p -Raw
+          $old = 'isideload = { version = "0.3.17", features = ["fs-storage"], git = "https://github.com/nab138/isideload", package = "isideload", branch = "apple-codesign-quick" }'
+          $new = 'isideload = { version = "0.3.17", features = ["fs-storage"], git = "https://github.com/AnInteger/isideload", package = "isideload", branch = "fix/gsa-xcode-client-info-block" }'
+          if (-not $s.Contains($old)) { throw 'Expected isideload dependency line not found' }
+          $s = $s.Replace($old, $new)
+          Set-Content $p $s -NoNewline
+          Select-String -Path $p -Pattern '^isideload = '
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add MSVC to PATH
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Perl and Make
+        shell: pwsh
+        run: choco install strawberryperl make --no-progress
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        working-directory: iloader
+        run: bun i --frozen-lockfile
+
+      - name: Build Windows installer
+        working-directory: iloader
+        run: bunx tauri build --bundles nsis --config src-tauri/ci.conf.json
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path 'iloader/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -Recurse
+          $files | ForEach-Object { Write-Host $_.FullName }
+          if (-not $files) { throw 'No Windows EXE produced' }
+
+      - name: Upload patched Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: iloader-2.3.1-pr11-windows-x64
+          path: iloader/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
