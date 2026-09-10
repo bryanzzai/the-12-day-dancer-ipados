@@ -71,7 +71,7 @@ old_title = '''                .lineLimit(1)
 new_title = '''                .lineLimit(1)
                 .minimumScaleFactor(0.68)
                 .padding(.horizontal, 5)
-                .frame(width: 187, minHeight: 44)
+                .frame(width: 187, height: 44)
                 .background(
 '''
 if old_title not in text:
