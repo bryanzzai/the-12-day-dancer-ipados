@@ -1,0 +1,72 @@
+name: Build patched iLoader Intel macOS
+
+on:
+  push:
+    branches:
+      - iloader-pr11-intel
+    paths:
+      - .github/workflows/build-iloader-pr11-intel.yml
+  workflow_dispatch:
+
+jobs:
+  build-iloader-intel:
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout iLoader 2.3.1
+        uses: actions/checkout@v6
+        with:
+          repository: nab138/iloader
+          ref: v2.3.1
+          path: iloader
+
+      - name: Patch isideload dependency to PR 11
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('iloader/src-tauri/Cargo.toml')
+          s = p.read_text()
+          old = 'isideload = { version = "0.3.17", features = ["fs-storage"], git = "https://github.com/nab138/isideload", package = "isideload", branch = "apple-codesign-quick" }'
+          new = 'isideload = { version = "0.3.17", features = ["fs-storage"], git = "https://github.com/AnInteger/isideload", package = "isideload", branch = "fix/gsa-xcode-client-info-block" }'
+          if old not in s:
+              raise SystemExit('Expected isideload dependency line not found; refusing to build an unverified source layout')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          echo 'Patched dependency:'
+          grep '^isideload = ' iloader/src-tauri/Cargo.toml
+
+      - name: Install Rust stable for Intel macOS
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        working-directory: iloader
+        run: bun i --frozen-lockfile
+
+      - name: Build Intel macOS DMG
+        working-directory: iloader
+        run: bunx tauri build --target x86_64-apple-darwin --bundles dmg --config src-tauri/ci.conf.json
+
+      - name: Verify DMG exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          find iloader/src-tauri/target/x86_64-apple-darwin/release/bundle -type f -name '*.dmg' -print
+          test -n "$(find iloader/src-tauri/target/x86_64-apple-darwin/release/bundle -type f -name '*.dmg' -print -quit)"
+
+      - name: Upload patched Intel DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: iloader-2.3.1-pr11-macos-intel
+          path: iloader/src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.dmg
+          if-no-files-found: error
+          retention-days: 7
