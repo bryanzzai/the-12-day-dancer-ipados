@@ -1,0 +1,49 @@
+name: Build 12DD Windows Refresher
+
+on:
+  push:
+    branches:
+      - 12dd-refresher-windows
+    paths:
+      - tools/12dd-refresher/**
+      - .github/workflows/build-12dd-refresher-windows.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout 12DD refresher branch
+        uses: actions/checkout@v6
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add MSVC to PATH
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Perl and Make
+        shell: pwsh
+        run: choco install strawberryperl make --no-progress
+
+      - name: Build refresher
+        shell: pwsh
+        run: cargo build --release --manifest-path tools/12dd-refresher/Cargo.toml
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          $exe = 'tools/12dd-refresher/target/release/12dd-refresher.exe'
+          if (-not (Test-Path $exe)) { throw "Missing $exe" }
+          Get-Item $exe | Format-List FullName,Length,LastWriteTime
+
+      - name: Upload refresher
+        uses: actions/upload-artifact@v7
+        with:
+          name: 12dd-refresher-windows-x64
+          path: tools/12dd-refresher/target/release/12dd-refresher.exe
+          if-no-files-found: error
+          retention-days: 7
