@@ -6,3 +6,4 @@ set -euo pipefail
 /usr/bin/python3 "$SRCROOT/Scripts/apply_sidestore_lite.py"
 /usr/bin/python3 "$SRCROOT/Scripts/apply_iphone12_ui.py"
 /usr/bin/python3 "$SRCROOT/Scripts/apply_iphone12_facade_offset.py"
+/usr/bin/python3 "$SRCROOT/Scripts/apply_iphone12_console_grid_fix.py"
