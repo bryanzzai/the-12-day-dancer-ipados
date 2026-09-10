@@ -33,17 +33,19 @@ jobs:
         shell: pwsh
         run: cargo build --release --manifest-path tools/12dd-refresher/Cargo.toml
 
-      - name: Verify executable
+      - name: Prepare executable
         shell: pwsh
         run: |
-          $exe = 'tools/12dd-refresher/target/release/12dd-refresher.exe'
-          if (-not (Test-Path $exe)) { throw "Missing $exe" }
-          Get-Item $exe | Format-List FullName,Length,LastWriteTime
+          $src = 'tools/12dd-refresher/target/release/twelvedd-refresher.exe'
+          $dst = 'tools/12dd-refresher/target/release/12DD-Refresher.exe'
+          if (-not (Test-Path $src)) { throw "Missing $src" }
+          Copy-Item $src $dst -Force
+          Get-Item $dst | Format-List FullName,Length,LastWriteTime
 
       - name: Upload refresher
         uses: actions/upload-artifact@v7
         with:
           name: 12dd-refresher-windows-x64
-          path: tools/12dd-refresher/target/release/12dd-refresher.exe
+          path: tools/12dd-refresher/target/release/12DD-Refresher.exe
           if-no-files-found: error
           retention-days: 7
