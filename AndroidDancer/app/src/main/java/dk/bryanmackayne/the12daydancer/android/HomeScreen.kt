@@ -1,4 +1,4 @@
-package dk.bryanzzai.the12daydancer.android
+package dk.bryanmackayne.the12daydancer.android
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -171,18 +171,6 @@ private fun AlbumButton(resources: ResourceStore, album: AlbumDefinition, onClic
                 album.portraitResource,
                 Modifier.width(62.dp).fillMaxHeight(),
                 ContentScale.Crop,
-            )
-            Text(
-                album.roman,
-                color = Color(0xFFEDD391),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.8.sp,
-                modifier = Modifier
-                    .padding(7.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.Black.copy(alpha = 0.82f))
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
             )
         }
         Box(
