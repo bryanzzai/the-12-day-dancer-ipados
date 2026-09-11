@@ -34,6 +34,8 @@ fun HomeScreen(
     openAlbum: (AlbumDefinition) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        val facadeSpacerHeight = (maxHeight * 0.34f).coerceAtLeast(250.dp)
+
         ResourceImage(
             resources = resources,
             resource = catalog.facadeBackgroundResource,
@@ -62,7 +64,7 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             DancerMast()
-            Spacer(Modifier.height((maxHeight * 0.34f).coerceAtLeast(250.dp)))
+            Spacer(Modifier.height(facadeSpacerHeight))
             ConcertConsole(
                 resources = resources,
                 albums = catalog.albums,
