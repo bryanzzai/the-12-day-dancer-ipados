@@ -1,0 +1,97 @@
+name: Build The 12 Day Dancer Android Galaxy A16
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [android-galaxy-a16]
+    paths:
+      - 'AndroidDancer/**'
+      - 'Scripts/generate_android_catalog.mjs'
+      - '.github/workflows/build-android-galaxy-a16.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Android Dancer branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 37
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-37' 'build-tools;36.0.0' 'platform-tools'
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Checkout current concert-house source of truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE="$RUNNER_TEMP/bryanmackayne-source"
+          git clone --depth 1 https://github.com/bryanzzai/bryanmackayne.git "$SOURCE"
+          git -C "$SOURCE" rev-parse HEAD | tee SOURCE-SITE-COMMIT.txt
+
+      - name: Generate exact Android catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p AndroidDancer/app/src/main/assets AndroidDancer/generated
+          node Scripts/generate_android_catalog.mjs \
+            --source "$RUNNER_TEMP/bryanmackayne-source" \
+            --output-json "$PWD/AndroidDancer/app/src/main/assets/Catalog.generated.json" \
+            --output-manifest "$PWD/AndroidDancer/generated/ConcertResources-manifest.tsv" \
+            --asset-dir "$PWD/AndroidDancer/app/src/main/assets"
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'AndroidDancer/app/src/main/assets/Catalog.generated.json';
+          const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (c.albums.length !== 12) throw new Error(`albums=${c.albums.length}`);
+          const audio = c.albums.reduce((n,a) => n + a.tracks.length, 0);
+          const video = c.albums.reduce((n,a) => n + a.films.length, 0);
+          if (audio !== 229 || video !== 9) throw new Error(`audio=${audio} video=${video}`);
+          console.log(`Verified Android catalog: ${c.albums.length} albums, ${audio} tracks, ${video} films`);
+          NODE
+
+      - name: Build debug APK
+        shell: bash
+        run: gradle --project-dir AndroidDancer :app:assembleDebug --stacktrace
+
+      - name: Verify and stage APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='AndroidDancer/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          mkdir -p delivery
+          cp "$APK" 'delivery/The-12-Day-Dancer-Galaxy-A16-v0.1-debug.apk'
+          cp AndroidDancer/generated/ConcertResources-manifest.tsv delivery/
+          cp SOURCE-SITE-COMMIT.txt delivery/
+          sha256sum delivery/The-12-Day-Dancer-Galaxy-A16-v0.1-debug.apk | tee delivery/SHA256.txt
+          ls -lh delivery/
+
+      - name: Upload Galaxy A16 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-12-Day-Dancer-Galaxy-A16-v0.1
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
