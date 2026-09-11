@@ -1,4 +1,4 @@
-package dk.bryanmackayne.the12daydancer.android
+package dk.bryanzzai.the12daydancer.android
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,7 +34,11 @@ fun HomeScreen(
     openAlbum: (AlbumDefinition) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val facadeSpacerHeight = (maxHeight * 0.34f).coerceAtLeast(250.dp)
+        val facadeSpacerHeight = if (maxHeight >= maxWidth) {
+            (maxHeight * 0.89f).coerceAtLeast(270.dp)
+        } else {
+            (maxHeight * 0.39f).coerceAtLeast(270.dp)
+        }
 
         ResourceImage(
             resources = resources,
