@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:allowBackup="false"
+        android:icon="@drawable/ic_launcher_ballerina"
+        android:roundIcon="@drawable/ic_launcher_ballerina"
         android:label="The 12 Day Dancer"
         android:theme="@style/Theme.Dancer"
         android:usesCleartextTraffic="false">

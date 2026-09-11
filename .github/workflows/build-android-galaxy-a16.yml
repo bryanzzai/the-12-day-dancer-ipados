@@ -49,6 +49,18 @@ jobs:
           git clone --depth 1 https://github.com/bryanzzai/bryanmackayne.git "$SOURCE"
           git -C "$SOURCE" rev-parse HEAD | tee SOURCE-SITE-COMMIT.txt
 
+      - name: Stage Bulgarian Ballerina launcher icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON_SOURCE="$RUNNER_TEMP/bryanmackayne-source/dies-solis/art/Bulgarian Ballerina [ I ].png"
+          ICON_TARGET="AndroidDancer/app/src/main/res/drawable-nodpi/ic_launcher_ballerina.png"
+          test -s "$ICON_SOURCE"
+          mkdir -p "$(dirname "$ICON_TARGET")"
+          cp "$ICON_SOURCE" "$ICON_TARGET"
+          test -s "$ICON_TARGET"
+          echo "Launcher icon staged from Dies Solis / Bulgarian Ballerina [ I ]."
+
       - name: Generate exact Android catalog
         shell: bash
         run: |
