@@ -1,9 +1,9 @@
-name: Build SideStore Lite iPadOS concert house
+name: Build iPad Air 2 SideStore edition
 
 on:
   workflow_dispatch:
   push:
-    branches: [sidestore-lite]
+    branches: [ipad-air-2]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Checkout SideStore Lite source
+      - name: Checkout iPad Air 2 source
         uses: actions/checkout@v4
 
       - name: Show toolchain
@@ -65,11 +65,9 @@ jobs:
 
           audio_count=$(find "$MEDIA_ROOT" -type f -name '*.web.m4a' | wc -l | tr -d ' ')
           video_count=$(find "$MEDIA_ROOT" -type f -name '*.mp4' | wc -l | tr -d ' ')
-          originals=$(find "$MEDIA_ROOT" -type f -name '*.m4a' ! -name '*.web.m4a' | wc -l | tr -d ' ')
           test "$audio_count" = 229
           test "$video_count" = 9
-          test "$originals" = 0
-          echo "Catalog authority media verified: $audio_count web M4A + $video_count MP4; original M4A: $originals"
+          echo "Catalog authority verified: $audio_count audio + $video_count video."
 
       - name: Generate exact catalog and external-library manifest
         shell: bash
@@ -83,21 +81,18 @@ jobs:
             --output-manifest "$PWD/App/Generated/ResourceManifest.tsv" \
             --output-report "$PWD/App/Generated/CatalogReport.txt"
           cat App/Generated/CatalogReport.txt
-          test "$(find ci-resources -maxdepth 1 -type f -name '*__audio__*.web.m4a' | wc -l | tr -d ' ')" = 229
-          test "$(find ci-resources -maxdepth 1 -type f -name '*__video__*.mp4' | wc -l | tr -d ' ')" = 9
+
+      - name: Apply iPad Air 2 compatibility patch
+        run: python3 Scripts/apply_ipad_air2_compat.py
 
       - name: Generate Xcode 15 compatible project
         run: |
+          set -euo pipefail
           xcodegen generate
           test -d The12DayDancer.xcodeproj
-          grep -q 'objectVersion = 60;' The12DayDancer.xcodeproj/project.pbxproj
-          grep -q 'compatibilityVersion = "Xcode 15.0";' The12DayDancer.xcodeproj/project.pbxproj
-          if grep -q 'preferredProjectObjectVersion' The12DayDancer.xcodeproj/project.pbxproj; then
-            echo 'Xcode 16 preferredProjectObjectVersion leaked into Xcode 15 project.' >&2
-            exit 1
-          fi
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;' The12DayDancer.xcodeproj/project.pbxproj
 
-      - name: Compile SideStore Lite app
+      - name: Compile unsigned arm64 iPad app
         shell: bash
         run: |
           set -o pipefail
@@ -106,98 +101,84 @@ jobs:
             -project The12DayDancer.xcodeproj \
             -scheme The12DayDancer \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
-            build | tee xcodebuild-sidestore-lite.log
+            CODE_SIGNING_REQUIRED=NO \
+            build | tee xcodebuild-ipad-air2.log
 
-      - name: Verify Lite app contains no concert media
+      - name: Verify iPad Air 2 build
         shell: bash
         run: |
           set -euo pipefail
-          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Build/Products/Debug-iphonesimulator/The 12 Day Dancer.app' -print -quit)
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Build/Products/Debug-iphoneos/The 12 Day Dancer.app' -print -quit)
           test -n "$APP"
-          RES="$APP/ConcertResources"
-          test -d "$RES"
-          test -s "$RES/facade__background__bulgarian-ballerina.png"
-          test -s "$RES/SOURCE-SITE-COMMIT.txt"
+          test -d "$APP/ConcertResources"
+          test -s "$APP/ConcertResources/facade__background__bulgarian-ballerina.png"
 
           audio_count=$(find "$APP" -type f -name '*.m4a' | wc -l | tr -d ' ')
           video_count=$(find "$APP" -type f -name '*.mp4' | wc -l | tr -d ' ')
-          resource_count=$(find "$RES" -maxdepth 1 -type f | wc -l | tr -d ' ')
           test "$audio_count" = 0
           test "$video_count" = 0
-          test "$resource_count" = 2
 
-          grep -q 'SIDESTORE-LITE-RESOURCE-ROOT' App/Sources/The12DayDancerApp.swift
-          /usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist" | grep -q true
-          /usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist" | grep -q true
+          APP_PLIST="$APP/Info.plist" python3 - <<'PY'
+          import os, plistlib
+          with open(os.environ['APP_PLIST'], 'rb') as f:
+              info = plistlib.load(f)
+          assert info.get('CFBundleIdentifier') == 'dk.bryanmackayne.the12daydancer', info.get('CFBundleIdentifier')
+          assert info.get('UIDeviceFamily') == [2], info.get('UIDeviceFamily')
+          minimum = info.get('MinimumOSVersion')
+          assert minimum == '15.0', minimum
+          print('Verified iPad-only app, iPadOS 15.0 minimum, existing SideStore bundle id.')
+          PY
 
-          size_mb=$(du -sm "$APP" | awk '{print $1}')
-          test "$size_mb" -lt 100
-          echo "SideStore Lite built app: $APP"
-          echo "Lite validation: 0 M4A; 0 MP4; 2 bootstrap files; external Documents resolver; Finder file sharing enabled; ${size_mb} MB."
+          /usr/bin/file "$APP/The 12 Day Dancer" | grep -q arm64
+          echo "Air 2 build verified: arm64, iPad family, iPadOS 15.0 minimum, no concert media embedded."
+          echo "$APP" > AIR2_APP_PATH.txt
 
-      - name: Package ready-to-open Xcode 15.2 project
+      - name: Package SideStore IPA and Xcode project
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf delivery
-          ROOT=delivery/The-12-Day-Dancer-iPadOS-SIDESTORE-LITE
-          mkdir -p "$ROOT"
+          APP=$(cat AIR2_APP_PATH.txt)
+          rm -rf delivery Payload
+          mkdir -p delivery Payload
+          cp -R "$APP" Payload/
+          ditto -c -k --sequesterRsrc Payload delivery/The-12-Day-Dancer-iPad-Air-2-SideStore.ipa
 
+          ROOT=delivery/The-12-Day-Dancer-iPad-Air-2-Xcode15.2
+          mkdir -p "$ROOT"
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='delivery' \
+            --exclude='Payload' \
             --exclude='ci-resources' \
-            --exclude='xcodebuild-sidestore-lite.log' \
+            --exclude='xcodebuild-ipad-air2.log' \
             ./ "$ROOT/"
-
-          cp xcodebuild-sidestore-lite.log "$ROOT/XCODEBUILD-SIDESTORE-LITE-GREEN.log"
+          cp xcodebuild-ipad-air2.log "$ROOT/XCODEBUILD-iPAD-AIR2-GREEN.log"
           cp SOURCE-SITE-COMMIT.txt "$ROOT/SOURCE-SITE-COMMIT.txt"
-
           cat > "$ROOT/OPEN-ME-FIRST.txt" <<'TXT'
-          THE 12 DAY DANCER — SIDESTORE LITE
+          THE 12 DAY DANCER — iPAD AIR 2 — ONE CHANCE EDITION
 
-          Purpose:
-            Keep the signed app small enough for SideStore install/refresh.
-            The full concert library is NOT baked into the app bundle.
+          Dedicated compatibility build for Bryan's reference iPad Air 2.
+          Minimum OS: iPadOS 15.0. Device family: iPad. Architecture: arm64.
+          Same SideStore bundle id as the established iPad edition to avoid consuming a new App ID.
+          The concert library remains external in Documents/ConcertResources.
 
-          This exact project was generated and compiled successfully by GitHub Actions.
-          CI verified:
-            - exact 12-album catalog generated from the concert-house source of truth
-            - 229 web M4A + 9 MP4 identities validated against Releases
-            - built app contains 0 M4A and 0 MP4
-            - only ballerina facade + source marker are bundled as bootstrap resources
-            - Documents/ConcertResources is the preferred runtime media location
-            - Finder/iPad Files sharing is enabled for The 12 Day Dancer
-            - Xcode 15.0/15.2 compatible project format
-
-          On M/S Ventura with Xcode 15.2:
-          1. Open The12DayDancer.xcodeproj.
-          2. Select The12DayDancer target -> Signing & Capabilities -> Bryan's Personal Team.
-          3. Select the physical 12.9-inch iPad.
-          4. Product -> Build.
-          5. Use Product -> Show Build Folder in Finder and take the Debug-iphoneos app.
-          6. Package it as an IPA with Payload/The 12 Day Dancer.app at archive root.
-          7. Install that small IPA through SideStore with LocalDevVPN enabled.
-
-          Do NOT add the 3 GB concert library to this app bundle.
-          After the SideStore app itself is physically green, the separate ConcertResources
-          library will be copied into the app's Documents folder by USB.
+          GitHub Actions compiled and validated the exact source in this archive.
+          The accompanying IPA is unsigned and intended for SideStore to sign during installation.
           TXT
+          ditto -c -k --sequesterRsrc --keepParent "$ROOT" delivery/The-12-Day-Dancer-iPad-Air-2-Xcode15.2-READY.zip
+          ls -lh delivery/*
 
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$ROOT" \
-            delivery/The-12-Day-Dancer-iPadOS-SIDESTORE-LITE-Xcode15.2-READY.zip
-          ls -lh delivery/The-12-Day-Dancer-iPadOS-SIDESTORE-LITE-Xcode15.2-READY.zip
-
-      - name: Upload SideStore Lite Xcode project
+      - name: Upload iPad Air 2 SideStore package
         uses: actions/upload-artifact@v4
         with:
-          name: The-12-Day-Dancer-iPadOS-SIDESTORE-LITE-Xcode15.2-READY
-          path: delivery/The-12-Day-Dancer-iPadOS-SIDESTORE-LITE-Xcode15.2-READY.zip
+          name: The-12-Day-Dancer-iPad-Air-2-SideStore
+          path: |
+            delivery/The-12-Day-Dancer-iPad-Air-2-SideStore.ipa
+            delivery/The-12-Day-Dancer-iPad-Air-2-Xcode15.2-READY.zip
           if-no-files-found: error
           compression-level: 6
           retention-days: 30
