@@ -1,4 +1,4 @@
-name: Build iPad Air 2 SideStore edition
+name: Build iPad Air 2 TrollStore edition
 
 on:
   workflow_dispatch:
@@ -82,8 +82,11 @@ jobs:
             --output-report "$PWD/App/Generated/CatalogReport.txt"
           cat App/Generated/CatalogReport.txt
 
-      - name: Apply iPad Air 2 compatibility patch
-        run: python3 Scripts/apply_ipad_air2_compat.py
+      - name: Apply iPad Air 2 compatibility and full-screen patch
+        run: |
+          set -euo pipefail
+          python3 Scripts/apply_ipad_air2_compat.py
+          grep -q 'navigationViewStyle(StackNavigationViewStyle())' App/Sources/The12DayDancerApp.swift
 
       - name: Generate Xcode 15 compatible project
         run: |
@@ -107,7 +110,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build | tee xcodebuild-ipad-air2.log
 
-      - name: Verify iPad Air 2 build
+      - name: Verify iPad Air 2 full-screen build
         shell: bash
         run: |
           set -euo pipefail
@@ -127,16 +130,16 @@ jobs:
               info = plistlib.load(f)
           assert info.get('CFBundleIdentifier') == 'dk.bryanmackayne.the12daydancer', info.get('CFBundleIdentifier')
           assert info.get('UIDeviceFamily') == [2], info.get('UIDeviceFamily')
-          minimum = info.get('MinimumOSVersion')
-          assert minimum == '15.0', minimum
-          print('Verified iPad-only app, iPadOS 15.0 minimum, existing SideStore bundle id.')
+          assert info.get('MinimumOSVersion') == '15.0', info.get('MinimumOSVersion')
+          assert info.get('UIRequiresFullScreen') is True, info.get('UIRequiresFullScreen')
+          print('Verified iPad-only, iPadOS 15.0 minimum, full-screen-only app.')
           PY
 
           /usr/bin/file "$APP/The 12 Day Dancer" | grep -q arm64
-          echo "Air 2 build verified: arm64, iPad family, iPadOS 15.0 minimum, no concert media embedded."
+          echo "Air 2 build verified: arm64, iPad family, iPadOS 15.0 minimum, full-screen-only, no concert media embedded."
           echo "$APP" > AIR2_APP_PATH.txt
 
-      - name: Package SideStore IPA and Xcode project
+      - name: Package TrollStore IPA and Xcode project
         shell: bash
         run: |
           set -euo pipefail
@@ -144,7 +147,16 @@ jobs:
           rm -rf delivery Payload
           mkdir -p delivery Payload
           cp -R "$APP" Payload/
-          ditto -c -k --sequesterRsrc Payload delivery/The-12-Day-Dancer-iPad-Air-2-SideStore.ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload delivery/The-12-Day-Dancer-iPad-Air-2-TrollStore.ipa
+
+          python3 - <<'PY'
+          import zipfile
+          p='delivery/The-12-Day-Dancer-iPad-Air-2-TrollStore.ipa'
+          with zipfile.ZipFile(p) as z:
+              names=z.namelist()
+          assert any(n.startswith('Payload/') and n.endswith('.app/') for n in names), 'IPA missing Payload/*.app/'
+          print('Verified IPA contains Payload/*.app/.')
+          PY
 
           ROOT=delivery/The-12-Day-Dancer-iPad-Air-2-Xcode15.2
           mkdir -p "$ROOT"
@@ -159,25 +171,26 @@ jobs:
           cp xcodebuild-ipad-air2.log "$ROOT/XCODEBUILD-iPAD-AIR2-GREEN.log"
           cp SOURCE-SITE-COMMIT.txt "$ROOT/SOURCE-SITE-COMMIT.txt"
           cat > "$ROOT/OPEN-ME-FIRST.txt" <<'TXT'
-          THE 12 DAY DANCER — iPAD AIR 2 — ONE CHANCE EDITION
+          THE 12 DAY DANCER — iPAD AIR 2 — TROLLSTORE EDITION
 
           Dedicated compatibility build for Bryan's reference iPad Air 2.
           Minimum OS: iPadOS 15.0. Device family: iPad. Architecture: arm64.
-          Same SideStore bundle id as the established iPad edition to avoid consuming a new App ID.
+          Full-screen single-column navigation; iPad split-view/multitasking chrome disabled.
+          Bundle id: dk.bryanmackayne.the12daydancer.
           The concert library remains external in Documents/ConcertResources.
 
           GitHub Actions compiled and validated the exact source in this archive.
-          The accompanying IPA is unsigned and intended for SideStore to sign during installation.
+          The accompanying IPA is unsigned and packaged conventionally for TrollStore.
           TXT
           ditto -c -k --sequesterRsrc --keepParent "$ROOT" delivery/The-12-Day-Dancer-iPad-Air-2-Xcode15.2-READY.zip
           ls -lh delivery/*
 
-      - name: Upload iPad Air 2 SideStore package
+      - name: Upload iPad Air 2 TrollStore package
         uses: actions/upload-artifact@v4
         with:
-          name: The-12-Day-Dancer-iPad-Air-2-SideStore
+          name: The-12-Day-Dancer-iPad-Air-2-TrollStore
           path: |
-            delivery/The-12-Day-Dancer-iPad-Air-2-SideStore.ipa
+            delivery/The-12-Day-Dancer-iPad-Air-2-TrollStore.ipa
             delivery/The-12-Day-Dancer-iPad-Air-2-Xcode15.2-READY.zip
           if-no-files-found: error
           compression-level: 6
