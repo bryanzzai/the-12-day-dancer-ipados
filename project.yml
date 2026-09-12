@@ -20,6 +20,10 @@ targets:
         path: Scripts/run_ui_fixes.sh
         shell: /bin/bash
         basedOnDependencyAnalysis: false
+      - name: Apply iPad Pro 12.9 import host
+        path: Scripts/run_ipad_pro_12_9_import.sh
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Stage SideStore Lite bootstrap
         path: Scripts/stage_resources.sh
@@ -40,7 +44,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App/Info.plist
-        MARKETING_VERSION: "1.0"
+        MARKETING_VERSION: "1.0-ipadpro12-9"
         CURRENT_PROJECT_VERSION: "1"
 schemes:
   The12DayDancer:
