@@ -82,10 +82,13 @@ jobs:
             --output-report "$PWD/App/Generated/CatalogReport.txt"
           cat App/Generated/CatalogReport.txt
 
-      - name: Apply iPad Air 2 compatibility and full-screen patch
+      - name: Apply external-library, iPad Air 2 compatibility and full-screen patches
         run: |
           set -euo pipefail
+          python3 Scripts/apply_sidestore_lite.py
           python3 Scripts/apply_ipad_air2_compat.py
+          grep -q 'SIDESTORE-LITE-RESOURCE-ROOT' App/Sources/The12DayDancerApp.swift
+          grep -q 'SIDESTORE-LITE-THUMBNAIL-RESOURCE-ROOT' App/Sources/FilmThumbnailView.swift
           grep -q 'navigationViewStyle(StackNavigationViewStyle())' App/Sources/The12DayDancerApp.swift
 
       - name: Generate Xcode 15 compatible project
@@ -124,6 +127,9 @@ jobs:
           test "$audio_count" = 0
           test "$video_count" = 0
 
+          grep -q 'SIDESTORE-LITE-RESOURCE-ROOT' App/Sources/The12DayDancerApp.swift
+          grep -q 'SIDESTORE-LITE-THUMBNAIL-RESOURCE-ROOT' App/Sources/FilmThumbnailView.swift
+
           APP_PLIST="$APP/Info.plist" python3 - <<'PY'
           import os, plistlib
           with open(os.environ['APP_PLIST'], 'rb') as f:
@@ -132,11 +138,13 @@ jobs:
           assert info.get('UIDeviceFamily') == [2], info.get('UIDeviceFamily')
           assert info.get('MinimumOSVersion') == '15.0', info.get('MinimumOSVersion')
           assert info.get('UIRequiresFullScreen') is True, info.get('UIRequiresFullScreen')
-          print('Verified iPad-only, iPadOS 15.0 minimum, full-screen-only app.')
+          assert info.get('UIFileSharingEnabled') is True, info.get('UIFileSharingEnabled')
+          assert info.get('LSSupportsOpeningDocumentsInPlace') is True, info.get('LSSupportsOpeningDocumentsInPlace')
+          print('Verified iPad-only, iPadOS 15.0 minimum, full-screen-only, file-sharing enabled app.')
           PY
 
           /usr/bin/file "$APP/The 12 Day Dancer" | grep -q arm64
-          echo "Air 2 build verified: arm64, iPad family, iPadOS 15.0 minimum, full-screen-only, no concert media embedded."
+          echo "Air 2 build verified: arm64, iPad family, iPadOS 15.0 minimum, full-screen-only, Documents/ConcertResources resolver, no concert media embedded."
           echo "$APP" > AIR2_APP_PATH.txt
 
       - name: Package TrollStore IPA and Xcode project
