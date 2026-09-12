@@ -1,10 +1,60 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 // IPAD-PRO-12-9-CONCERT-IMPORTER
-// iPadOS 17.7.x may show a folder-only picker whose Open button does not
-// actually return the current folder. This edition therefore imports selected
-// ConcertResources ITEMS instead: enter ConcertResources, Select All, then Open.
+// iPadOS 17.7.x does not reliably return the current directory through SwiftUI's
+// fileImporter(.folder). Use UIKit's documented directory picker instead. We
+// deliberately enable selection mode so the Files UI exposes Select/Done and
+// returns one security-scoped folder URL with recursive access to its contents.
+struct ConcertFolderPicker: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [.folder],
+            asCopy: false
+        )
+        picker.delegate = context.coordinator
+        // On iPadOS 17 this forces the Files picker into explicit selection mode,
+        // which exposes Select/Done instead of the inert single-folder Open path.
+        picker.allowsMultipleSelection = true
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onPick: (URL) -> Void
+        private let onCancel: () -> Void
+
+        init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+            self.onPick = onPick
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(
+            _ controller: UIDocumentPickerViewController,
+            didPickDocumentsAt urls: [URL]
+        ) {
+            guard let folder = urls.first else {
+                onCancel()
+                return
+            }
+            onPick(folder)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
+}
+
 struct ConcertImportHost<Content: View>: View {
     private let content: Content
 
@@ -63,33 +113,32 @@ struct ConcertImportHost<Content: View>: View {
             .padding(.leading, 18)
             .padding(.bottom, 14)
         }
-        .fileImporter(
-            isPresented: $showImporter,
-            allowedContentTypes: [.item],
-            allowsMultipleSelection: true
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard !urls.isEmpty else {
-                    statusText = "No files selected"
-                    return
+        .sheet(isPresented: $showImporter) {
+            ConcertFolderPicker(
+                onPick: { selectedFolder in
+                    showImporter = false
+                    importConcertResources(from: selectedFolder)
+                },
+                onCancel: {
+                    showImporter = false
                 }
-                importConcertResources(items: urls)
-            case .failure(let error):
-                if (error as NSError).code != NSUserCancelledError {
-                    statusText = "Import failed: \(error.localizedDescription)"
-                }
-            }
+            )
         }
     }
 
-    private func importConcertResources(items: [URL]) {
+    private func importConcertResources(from selectedURL: URL) {
         guard !isImporting else { return }
         isImporting = true
-        statusText = "Preparing \(items.count) selected items…"
+        statusText = "Preparing ConcertResources…"
 
         DispatchQueue.global(qos: .userInitiated).async {
             let manager = FileManager.default
+            let scoped = selectedURL.startAccessingSecurityScopedResource()
+            defer {
+                if scoped {
+                    selectedURL.stopAccessingSecurityScopedResource()
+                }
+            }
 
             do {
                 guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -100,32 +149,71 @@ struct ConcertImportHost<Content: View>: View {
                     )
                 }
 
+                // Bryan may select ConcertResources itself or its parent folder.
+                var sourceRoot = selectedURL
+                let nested = selectedURL.appendingPathComponent("ConcertResources", isDirectory: true)
+                var nestedIsDirectory: ObjCBool = false
+                if selectedURL.lastPathComponent != "ConcertResources",
+                   manager.fileExists(atPath: nested.path, isDirectory: &nestedIsDirectory),
+                   nestedIsDirectory.boolValue {
+                    sourceRoot = nested
+                }
+
                 let destinationRoot = documents.appendingPathComponent("ConcertResources", isDirectory: true)
                 try manager.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
 
+                let sourcePath = sourceRoot.standardizedFileURL.resolvingSymlinksInPath().path
+                let destinationPath = destinationRoot.standardizedFileURL.resolvingSymlinksInPath().path
+                guard sourcePath != destinationPath else {
+                    throw NSError(
+                        domain: "The12DayDancer.Import",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "That is already the Dancer ConcertResources folder"]
+                    )
+                }
+
+                guard let enumerator = manager.enumerator(
+                    at: sourceRoot,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                ) else {
+                    throw NSError(
+                        domain: "The12DayDancer.Import",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Could not read selected folder"]
+                    )
+                }
+
+                let prefix = sourceRoot.path.hasSuffix("/") ? sourceRoot.path : sourceRoot.path + "/"
                 var copiedFiles = 0
 
-                for selectedURL in items {
-                    let scoped = selectedURL.startAccessingSecurityScopedResource()
-                    defer {
-                        if scoped {
-                            selectedURL.stopAccessingSecurityScopedResource()
-                        }
-                    }
+                for case let itemURL as URL in enumerator {
+                    guard itemURL.path.hasPrefix(prefix) else { continue }
+                    let relative = String(itemURL.path.dropFirst(prefix.count))
+                    guard !relative.isEmpty else { continue }
 
-                    let values = try selectedURL.resourceValues(forKeys: [.isDirectoryKey])
+                    let destination = destinationRoot.appendingPathComponent(relative)
+                    let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
+
                     if values.isDirectory == true {
-                        copiedFiles += try copyDirectoryContents(
-                            from: selectedURL,
-                            to: destinationRoot,
-                            manager: manager,
-                            startingCount: copiedFiles
-                        )
+                        try manager.createDirectory(at: destination, withIntermediateDirectories: true)
                     } else {
-                        let destination = destinationRoot.appendingPathComponent(selectedURL.lastPathComponent)
-                        try replaceCopy(from: selectedURL, to: destination, manager: manager)
+                        try manager.createDirectory(
+                            at: destination.deletingLastPathComponent(),
+                            withIntermediateDirectories: true
+                        )
+                        if manager.fileExists(atPath: destination.path) {
+                            try manager.removeItem(at: destination)
+                        }
+                        try manager.copyItem(at: itemURL, to: destination)
                         copiedFiles += 1
-                        publishProgress(copiedFiles)
+
+                        if copiedFiles % 25 == 0 {
+                            let current = copiedFiles
+                            DispatchQueue.main.async {
+                                statusText = "Imported \(current) files…"
+                            }
+                        }
                     }
                 }
 
@@ -138,61 +226,6 @@ struct ConcertImportHost<Content: View>: View {
                     isImporting = false
                     statusText = "Import failed: \(error.localizedDescription)"
                 }
-            }
-        }
-    }
-
-    private func copyDirectoryContents(
-        from sourceRoot: URL,
-        to destinationRoot: URL,
-        manager: FileManager,
-        startingCount: Int
-    ) throws -> Int {
-        guard let enumerator = manager.enumerator(
-            at: sourceRoot,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return 0
-        }
-
-        let prefix = sourceRoot.path.hasSuffix("/") ? sourceRoot.path : sourceRoot.path + "/"
-        var copied = 0
-
-        for case let itemURL as URL in enumerator {
-            guard itemURL.path.hasPrefix(prefix) else { continue }
-            let relative = String(itemURL.path.dropFirst(prefix.count))
-            guard !relative.isEmpty else { continue }
-
-            let destination = destinationRoot.appendingPathComponent(relative)
-            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
-            if values.isDirectory == true {
-                try manager.createDirectory(at: destination, withIntermediateDirectories: true)
-            } else {
-                try replaceCopy(from: itemURL, to: destination, manager: manager)
-                copied += 1
-                publishProgress(startingCount + copied)
-            }
-        }
-
-        return copied
-    }
-
-    private func replaceCopy(from source: URL, to destination: URL, manager: FileManager) throws {
-        try manager.createDirectory(
-            at: destination.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        if manager.fileExists(atPath: destination.path) {
-            try manager.removeItem(at: destination)
-        }
-        try manager.copyItem(at: source, to: destination)
-    }
-
-    private func publishProgress(_ copiedFiles: Int) {
-        if copiedFiles % 25 == 0 {
-            DispatchQueue.main.async {
-                statusText = "Imported \(copiedFiles) files…"
             }
         }
     }
