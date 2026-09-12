@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
-import subprocess
 
 source_root = Path("App/Sources")
 files = sorted(source_root.glob("*.swift"))
@@ -12,6 +11,7 @@ nav_count = 0
 font_design_count = 0
 letter_spacing_count = 0
 stack_style_count = 0
+host_wrap_count = 0
 
 for path in files:
     text = path.read_text(encoding="utf-8")
@@ -32,6 +32,18 @@ for path in files:
         text = text.replace(needle, replacement, 1)
         stack_style_count += 1
 
+    # Wrap the root content in a dedicated Air 2 import host. Keeping the importer
+    # in its own Swift file prevents the normal native-UI refinement phase from
+    # rewriting it away. This replacement is idempotent and safe to run both
+    # before and during the Xcode build.
+    if path.name == "The12DayDancerApp.swift" and "Air2ConcertImportHost {" not in text:
+        app_needle = "        WindowGroup {\n            ContentView()\n        }"
+        app_replacement = "        WindowGroup {\n            Air2ConcertImportHost { ContentView() }\n        }"
+        if app_needle not in text:
+            raise SystemExit("Could not locate WindowGroup ContentView root for Air 2 import host")
+        text = text.replace(app_needle, app_replacement, 1)
+        host_wrap_count += 1
+
     font_here = text.count(".fontDesign(.serif)")
     if font_here:
         text = text.replace(".fontDesign(.serif)", "")
@@ -47,12 +59,6 @@ for path in files:
 
 print(
     "Applied iPad Air 2 / iPadOS 15 compatibility patch across Swift sources: "
-    f"NavigationStack={nav_count}, stackStyle={stack_style_count}, "
+    f"NavigationStack={nav_count}, stackStyle={stack_style_count}, hostWrap={host_wrap_count}, "
     f"fontDesign={font_design_count}, letterSpacing={letter_spacing_count}."
 )
-
-# The Air 2 / TrollStore edition cannot rely on Finder File Sharing because
-# TrollStore registers installed apps differently from ordinary user apps.
-# Add an in-app folder picker that imports a selected ConcertResources folder
-# into Documents/ConcertResources instead.
-subprocess.run(["python3", "Scripts/apply_ipad_air2_import.py"], check=True)
