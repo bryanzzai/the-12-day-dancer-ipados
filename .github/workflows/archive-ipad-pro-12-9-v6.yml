@@ -1,0 +1,70 @@
+name: Archive iPad Pro 12.9 v6 Xcode project
+
+on:
+  push:
+    branches: [ipad-pro-12-9-trollstore-lite]
+    paths:
+      - '.github/workflows/archive-ipad-pro-12-9-v6.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact working v6 snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: aeda5d07c2582485a806927b18f39d4c9b4c39e4
+          fetch-depth: 1
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          test -d The12DayDancer.xcodeproj
+
+      - name: Prepare Captain Digital Kolyma backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$PWD"
+          OUT="$RUNNER_TEMP/Captains-Digital-Kolyma-12DD-iPad-Pro-12.9-v6"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          rsync -a --exclude '.git' "$ROOT/" "$OUT/"
+          cat > "$OUT/BACKUP-NOTE.txt" <<'EOF'
+          Bryan MacKayne / The 12 Day Dancer
+          iPad Pro 12.9 TrollStore Lite backup
+
+          Functional source snapshot:
+          aeda5d07c2582485a806927b18f39d4c9b4c39e4
+
+          Branch at time of capture:
+          ipad-pro-12-9-trollstore-lite
+
+          This is the first working v6 build on the iPad Pro 12.9-inch / iPadOS 17.7.11 path.
+          The crucial fix is the TrollStore Lite / FileProvider entitlement embedding:
+            application-identifier = dk.bryanmackayne.the12daydancer
+            platform-application = true
+
+          The generated The12DayDancer.xcodeproj is included alongside project.yml and all source/scripts.
+          Concert media are intentionally NOT embedded in this source backup.
+          EOF
+          ditto -c -k --sequesterRsrc --keepParent "$OUT" "$PWD/Captains-Digital-Kolyma-12DD-iPad-Pro-12.9-v6-Xcode.zip"
+          unzip -l "$PWD/Captains-Digital-Kolyma-12DD-iPad-Pro-12.9-v6-Xcode.zip" | grep -q 'The12DayDancer.xcodeproj/'
+          unzip -l "$PWD/Captains-Digital-Kolyma-12DD-iPad-Pro-12.9-v6-Xcode.zip" | grep -q 'BACKUP-NOTE.txt'
+
+      - name: Upload Captain Digital Kolyma archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: Captains-Digital-Kolyma-12DD-iPad-Pro-12.9-v6-Xcode
+          path: Captains-Digital-Kolyma-12DD-iPad-Pro-12.9-v6-Xcode.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
