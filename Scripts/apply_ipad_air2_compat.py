@@ -10,6 +10,7 @@ if not files:
 nav_count = 0
 font_design_count = 0
 letter_spacing_count = 0
+stack_style_count = 0
 
 for path in files:
     text = path.read_text(encoding="utf-8")
@@ -18,6 +19,17 @@ for path in files:
     if nav_here:
         text = text.replace("NavigationStack {", "NavigationView {")
         nav_count += nav_here
+
+    # On iPadOS 15, NavigationView defaults to split/sidebar navigation on iPad.
+    # The Dancer facade is a full-screen composition, so force single-column stack
+    # navigation to match the other editions.
+    if path.name == "The12DayDancerApp.swift" and ".navigationViewStyle(StackNavigationViewStyle())" not in text:
+        needle = "            .preferredColorScheme(.dark)\n        }\n    }\n\n    private var mast"
+        replacement = "            .preferredColorScheme(.dark)\n        }\n        .navigationViewStyle(StackNavigationViewStyle())\n    }\n\n    private var mast"
+        if needle not in text:
+            raise SystemExit("Could not locate ContentView NavigationView closing block for Air 2 stack-style patch")
+        text = text.replace(needle, replacement, 1)
+        stack_style_count += 1
 
     font_here = text.count(".fontDesign(.serif)")
     if font_here:
@@ -34,5 +46,6 @@ for path in files:
 
 print(
     "Applied iPad Air 2 / iPadOS 15 compatibility patch across Swift sources: "
-    f"NavigationStack={nav_count}, fontDesign={font_design_count}, letterSpacing={letter_spacing_count}."
+    f"NavigationStack={nav_count}, stackStyle={stack_style_count}, "
+    f"fontDesign={font_design_count}, letterSpacing={letter_spacing_count}."
 )
