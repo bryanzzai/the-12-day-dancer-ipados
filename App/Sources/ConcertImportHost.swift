@@ -5,7 +5,8 @@ import UIKit
 // IPAD-PRO-12-9-CONCERT-IMPORTER
 // iPadOS 17.7.x: follow Apple's documented directory-picker flow exactly.
 // Present UIDocumentPickerViewController directly from UIKit, request only .folder,
-// single selection, and coordinate reads from the returned security-scoped URL.
+// single selection, over-full-screen presentation, and coordinate reads from the
+// returned security-scoped URL.
 final class ConcertFolderPickerSession: NSObject, UIDocumentPickerDelegate {
     private let onPick: (URL) -> Void
     private let onCancel: () -> Void
@@ -22,10 +23,10 @@ final class ConcertFolderPickerSession: NSObject, UIDocumentPickerDelegate {
             return
         }
 
-        // Apple's directory-access documentation uses this exact initializer for folders.
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
         picker.delegate = self
         picker.allowsMultipleSelection = false
+        picker.modalPresentationStyle = .overFullScreen
         picker.overrideUserInterfaceStyle = .light
         presenter.present(picker, animated: true)
     }
@@ -148,7 +149,7 @@ struct ConcertImportHost<Content: View>: View {
                 pickerSession = nil
             }
         )
-        pickerSession = session // Retain the delegate for the lifetime of the picker.
+        pickerSession = session
         session.present()
     }
 
@@ -224,7 +225,6 @@ struct ConcertImportHost<Content: View>: View {
         to destinationRoot: URL,
         manager: FileManager
     ) throws {
-        // Bryan may select ConcertResources itself or its parent folder.
         var sourceRoot = selectedURL
         let nested = selectedURL.appendingPathComponent("ConcertResources", isDirectory: true)
         var nestedIsDirectory: ObjCBool = false
