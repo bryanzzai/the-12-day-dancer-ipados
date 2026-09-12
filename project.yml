@@ -20,6 +20,10 @@ targets:
         path: Scripts/run_ui_fixes.sh
         shell: /bin/bash
         basedOnDependencyAnalysis: false
+      - name: Apply iPad Air 2 compatibility
+        path: Scripts/run_ipad_air2_compat.sh
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
     postBuildScripts:
       - name: Stage SideStore Lite bootstrap
         path: Scripts/stage_resources.sh
