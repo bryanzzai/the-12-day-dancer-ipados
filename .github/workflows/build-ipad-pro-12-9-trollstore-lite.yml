@@ -106,6 +106,30 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build | tee xcodebuild-ipad-pro-12-9.log
 
+      - name: Embed TrollStore Lite FileProvider entitlements
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*Build/Products/Debug-iphoneos/The 12 Day Dancer.app' -print -quit)
+          test -n "$APP"
+          EXE="$APP/The 12 Day Dancer"
+          test -f "$EXE"
+
+          # TrollStore Lite preserves entitlements already embedded in the main binary.
+          # Ad-hoc sign only the executable so platform-application survives installation.
+          /usr/bin/codesign \
+            --force \
+            --sign - \
+            --timestamp=none \
+            --generate-entitlement-der \
+            --entitlements App/TrollStoreLite.entitlements \
+            "$EXE"
+
+          /usr/bin/codesign -d --entitlements :- "$EXE" > effective-entitlements.plist 2>/dev/null
+          /usr/bin/plutil -extract application-identifier raw effective-entitlements.plist | grep -Fx 'dk.bryanmackayne.the12daydancer'
+          /usr/bin/plutil -extract platform-application raw effective-entitlements.plist | grep -Fx 'true'
+          echo 'Verified embedded application-identifier + platform-application entitlements.'
+
       - name: Verify 12.9-inch TrollStore Lite build
         shell: bash
         run: |
@@ -138,7 +162,9 @@ jobs:
           PY
 
           /usr/bin/file "$APP/The 12 Day Dancer" | grep -q arm64
-          echo "12.9 build verified: arm64, iPad family, iPadOS 17.0 minimum, Documents/ConcertResources resolver + Files importer, no concert media embedded."
+          /usr/bin/codesign -d --entitlements :- "$APP/The 12 Day Dancer" > effective-entitlements-verify.plist 2>/dev/null
+          /usr/bin/plutil -extract platform-application raw effective-entitlements-verify.plist | grep -Fx 'true'
+          echo "12.9 build verified: arm64, iPad family, iPadOS 17.0 minimum, Files importer, TrollStore Lite FileProvider entitlements, no concert media embedded."
           echo "$APP" > IPADPRO_APP_PATH.txt
 
       - name: Package TrollStore Lite IPA
