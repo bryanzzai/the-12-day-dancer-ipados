@@ -9,7 +9,7 @@ if not files:
 
 nav_count = 0
 font_design_count = 0
-tracking_count = 0
+letter_spacing_count = 0
 
 for path in files:
     text = path.read_text(encoding="utf-8")
@@ -24,14 +24,15 @@ for path in files:
         text = text.replace(".fontDesign(.serif)", "")
         font_design_count += font_here
 
-    # SwiftUI tracking() is iOS 16+. kerning() is available on iPadOS 15 and
-    # gives the same visual intent for 12DD's display text.
-    text, tracking_here = re.subn(r"\.tracking\(([^\n()]*)\)", r".kerning(\1)", text)
-    tracking_count += tracking_here
+    # The current SwiftUI SDK gates both tracking() and kerning() used here
+    # above our iPadOS 15 target. Letter spacing is cosmetic, so drop it.
+    text, tracking_here = re.subn(r"\s*\.tracking\([^\n()]*\)", "", text)
+    text, kerning_here = re.subn(r"\s*\.kerning\([^\n()]*\)", "", text)
+    letter_spacing_count += tracking_here + kerning_here
 
     path.write_text(text, encoding="utf-8")
 
 print(
     "Applied iPad Air 2 / iPadOS 15 compatibility patch across Swift sources: "
-    f"NavigationStack={nav_count}, fontDesign={font_design_count}, tracking={tracking_count}."
+    f"NavigationStack={nav_count}, fontDesign={font_design_count}, letterSpacing={letter_spacing_count}."
 )
