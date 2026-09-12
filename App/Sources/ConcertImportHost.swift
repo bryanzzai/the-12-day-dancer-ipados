@@ -3,62 +3,84 @@ import UniformTypeIdentifiers
 import UIKit
 
 // IPAD-PRO-12-9-CONCERT-IMPORTER
-// iPadOS 17.7.x does not reliably return the current directory through SwiftUI's
-// fileImporter(.folder). Use UIKit's documented directory picker instead. We
-// deliberately enable selection mode so the Files UI exposes Select/Done and
-// returns one security-scoped folder URL with recursive access to its contents.
-struct ConcertFolderPicker: UIViewControllerRepresentable {
-    let onPick: (URL) -> Void
-    let onCancel: () -> Void
+// iPadOS 17.7.x: follow Apple's documented directory-picker flow exactly.
+// Present UIDocumentPickerViewController directly from UIKit, request only .folder,
+// single selection, and coordinate reads from the returned security-scoped URL.
+final class ConcertFolderPickerSession: NSObject, UIDocumentPickerDelegate {
+    private let onPick: (URL) -> Void
+    private let onCancel: () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onPick: onPick, onCancel: onCancel)
+    init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+        self.onPick = onPick
+        self.onCancel = onCancel
     }
 
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.folder],
-            asCopy: false
-        )
-        picker.delegate = context.coordinator
-        // On iPadOS 17 this forces the Files picker into explicit selection mode,
-        // which exposes Select/Done instead of the inert single-folder Open path.
-        picker.allowsMultipleSelection = true
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        private let onPick: (URL) -> Void
-        private let onCancel: () -> Void
-
-        init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
-            self.onPick = onPick
-            self.onCancel = onCancel
-        }
-
-        func documentPicker(
-            _ controller: UIDocumentPickerViewController,
-            didPickDocumentsAt urls: [URL]
-        ) {
-            guard let folder = urls.first else {
-                onCancel()
-                return
-            }
-            onPick(folder)
-        }
-
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    @MainActor
+    func present() {
+        guard let presenter = Self.topViewController() else {
             onCancel()
+            return
         }
+
+        // Apple's directory-access documentation uses this exact initializer for folders.
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        picker.overrideUserInterfaceStyle = .light
+        presenter.present(picker, animated: true)
+    }
+
+    func documentPicker(
+        _ controller: UIDocumentPickerViewController,
+        didPickDocumentsAt urls: [URL]
+    ) {
+        guard let folder = urls.first else {
+            onCancel()
+            return
+        }
+        onPick(folder)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        onCancel()
+    }
+
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+
+        let window = scenes
+            .flatMap(\.windows)
+            .first(where: { $0.isKeyWindow })
+            ?? scenes.flatMap(\.windows).first(where: { !$0.isHidden })
+
+        guard var top = window?.rootViewController else { return nil }
+
+        while true {
+            if let presented = top.presentedViewController {
+                top = presented
+                continue
+            }
+            if let nav = top as? UINavigationController, let visible = nav.visibleViewController {
+                top = visible
+                continue
+            }
+            if let tab = top as? UITabBarController, let selected = tab.selectedViewController {
+                top = selected
+                continue
+            }
+            break
+        }
+        return top
     }
 }
 
 struct ConcertImportHost<Content: View>: View {
     private let content: Content
 
-    @State private var showImporter = false
+    @State private var pickerSession: ConcertFolderPickerSession? = nil
     @State private var isImporting = false
     @State private var statusText: String? = nil
 
@@ -84,7 +106,7 @@ struct ConcertImportHost<Content: View>: View {
                 }
 
                 Button {
-                    showImporter = true
+                    presentFolderPicker()
                 } label: {
                     HStack(spacing: 7) {
                         if isImporting {
@@ -113,17 +135,21 @@ struct ConcertImportHost<Content: View>: View {
             .padding(.leading, 18)
             .padding(.bottom, 14)
         }
-        .sheet(isPresented: $showImporter) {
-            ConcertFolderPicker(
-                onPick: { selectedFolder in
-                    showImporter = false
-                    importConcertResources(from: selectedFolder)
-                },
-                onCancel: {
-                    showImporter = false
-                }
-            )
-        }
+    }
+
+    @MainActor
+    private func presentFolderPicker() {
+        let session = ConcertFolderPickerSession(
+            onPick: { selectedFolder in
+                pickerSession = nil
+                importConcertResources(from: selectedFolder)
+            },
+            onCancel: {
+                pickerSession = nil
+            }
+        )
+        pickerSession = session // Retain the delegate for the lifetime of the picker.
+        session.present()
     }
 
     private func importConcertResources(from selectedURL: URL) {
@@ -149,74 +175,37 @@ struct ConcertImportHost<Content: View>: View {
                     )
                 }
 
-                // Bryan may select ConcertResources itself or its parent folder.
-                var sourceRoot = selectedURL
-                let nested = selectedURL.appendingPathComponent("ConcertResources", isDirectory: true)
-                var nestedIsDirectory: ObjCBool = false
-                if selectedURL.lastPathComponent != "ConcertResources",
-                   manager.fileExists(atPath: nested.path, isDirectory: &nestedIsDirectory),
-                   nestedIsDirectory.boolValue {
-                    sourceRoot = nested
-                }
-
                 let destinationRoot = documents.appendingPathComponent("ConcertResources", isDirectory: true)
                 try manager.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
 
-                let sourcePath = sourceRoot.standardizedFileURL.resolvingSymlinksInPath().path
-                let destinationPath = destinationRoot.standardizedFileURL.resolvingSymlinksInPath().path
-                guard sourcePath != destinationPath else {
-                    throw NSError(
-                        domain: "The12DayDancer.Import",
-                        code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "That is already the Dancer ConcertResources folder"]
-                    )
-                }
+                var coordinationError: NSError?
+                var importError: Error?
 
-                guard let enumerator = manager.enumerator(
-                    at: sourceRoot,
-                    includingPropertiesForKeys: [.isDirectoryKey],
-                    options: [.skipsHiddenFiles]
-                ) else {
-                    throw NSError(
-                        domain: "The12DayDancer.Import",
-                        code: 3,
-                        userInfo: [NSLocalizedDescriptionKey: "Could not read selected folder"]
-                    )
-                }
-
-                let prefix = sourceRoot.path.hasSuffix("/") ? sourceRoot.path : sourceRoot.path + "/"
-                var copiedFiles = 0
-
-                for case let itemURL as URL in enumerator {
-                    guard itemURL.path.hasPrefix(prefix) else { continue }
-                    let relative = String(itemURL.path.dropFirst(prefix.count))
-                    guard !relative.isEmpty else { continue }
-
-                    let destination = destinationRoot.appendingPathComponent(relative)
-                    let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
-
-                    if values.isDirectory == true {
-                        try manager.createDirectory(at: destination, withIntermediateDirectories: true)
-                    } else {
-                        try manager.createDirectory(
-                            at: destination.deletingLastPathComponent(),
-                            withIntermediateDirectories: true
+                let coordinator = NSFileCoordinator(filePresenter: nil)
+                coordinator.coordinate(
+                    readingItemAt: selectedURL,
+                    options: [.withoutChanges],
+                    error: &coordinationError
+                ) { coordinatedURL in
+                    do {
+                        try copySelectedDirectory(
+                            from: coordinatedURL,
+                            to: destinationRoot,
+                            manager: manager
                         )
-                        if manager.fileExists(atPath: destination.path) {
-                            try manager.removeItem(at: destination)
-                        }
-                        try manager.copyItem(at: itemURL, to: destination)
-                        copiedFiles += 1
-
-                        if copiedFiles % 25 == 0 {
-                            let current = copiedFiles
-                            DispatchQueue.main.async {
-                                statusText = "Imported \(current) files…"
-                            }
-                        }
+                    } catch {
+                        importError = error
                     }
                 }
 
+                if let error = coordinationError {
+                    throw error
+                }
+                if let error = importError {
+                    throw error
+                }
+
+                let copiedFiles = try countFiles(in: destinationRoot, manager: manager)
                 DispatchQueue.main.async {
                     isImporting = false
                     statusText = "ConcertResources ready · \(copiedFiles) files"
@@ -228,5 +217,95 @@ struct ConcertImportHost<Content: View>: View {
                 }
             }
         }
+    }
+
+    private func copySelectedDirectory(
+        from selectedURL: URL,
+        to destinationRoot: URL,
+        manager: FileManager
+    ) throws {
+        // Bryan may select ConcertResources itself or its parent folder.
+        var sourceRoot = selectedURL
+        let nested = selectedURL.appendingPathComponent("ConcertResources", isDirectory: true)
+        var nestedIsDirectory: ObjCBool = false
+        if selectedURL.lastPathComponent != "ConcertResources",
+           manager.fileExists(atPath: nested.path, isDirectory: &nestedIsDirectory),
+           nestedIsDirectory.boolValue {
+            sourceRoot = nested
+        }
+
+        let sourcePath = sourceRoot.standardizedFileURL.resolvingSymlinksInPath().path
+        let destinationPath = destinationRoot.standardizedFileURL.resolvingSymlinksInPath().path
+        guard sourcePath != destinationPath else {
+            throw NSError(
+                domain: "The12DayDancer.Import",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "That is already the Dancer ConcertResources folder"]
+            )
+        }
+
+        guard let enumerator = manager.enumerator(
+            at: sourceRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            throw NSError(
+                domain: "The12DayDancer.Import",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Could not read selected folder"]
+            )
+        }
+
+        let prefix = sourceRoot.path.hasSuffix("/") ? sourceRoot.path : sourceRoot.path + "/"
+        var copiedFiles = 0
+
+        for case let itemURL as URL in enumerator {
+            guard itemURL.path.hasPrefix(prefix) else { continue }
+            let relative = String(itemURL.path.dropFirst(prefix.count))
+            guard !relative.isEmpty else { continue }
+
+            let destination = destinationRoot.appendingPathComponent(relative)
+            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
+
+            if values.isDirectory == true {
+                try manager.createDirectory(at: destination, withIntermediateDirectories: true)
+            } else {
+                try manager.createDirectory(
+                    at: destination.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if manager.fileExists(atPath: destination.path) {
+                    try manager.removeItem(at: destination)
+                }
+                try manager.copyItem(at: itemURL, to: destination)
+                copiedFiles += 1
+
+                if copiedFiles % 25 == 0 {
+                    let current = copiedFiles
+                    DispatchQueue.main.async {
+                        statusText = "Imported \(current) files…"
+                    }
+                }
+            }
+        }
+    }
+
+    private func countFiles(in root: URL, manager: FileManager) throws -> Int {
+        guard let enumerator = manager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return 0
+        }
+
+        var count = 0
+        for case let itemURL as URL in enumerator {
+            let values = try itemURL.resourceValues(forKeys: [.isDirectoryKey])
+            if values.isDirectory != true {
+                count += 1
+            }
+        }
+        return count
     }
 }
