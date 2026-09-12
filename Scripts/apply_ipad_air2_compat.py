@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
+import subprocess
 
 source_root = Path("App/Sources")
 files = sorted(source_root.glob("*.swift"))
@@ -49,3 +50,9 @@ print(
     f"NavigationStack={nav_count}, stackStyle={stack_style_count}, "
     f"fontDesign={font_design_count}, letterSpacing={letter_spacing_count}."
 )
+
+# The Air 2 / TrollStore edition cannot rely on Finder File Sharing because
+# TrollStore registers installed apps differently from ordinary user apps.
+# Add an in-app folder picker that imports a selected ConcertResources folder
+# into Documents/ConcertResources instead.
+subprocess.run(["python3", "Scripts/apply_ipad_air2_import.py"], check=True)
