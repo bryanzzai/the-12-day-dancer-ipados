@@ -16,15 +16,15 @@ struct Air2ConcertImportHost<Content: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottomLeading) {
             content
 
-            VStack(alignment: .trailing, spacing: 7) {
+            VStack(alignment: .leading, spacing: 7) {
                 if let status = statusText {
                     Text(status)
                         .font(.caption2)
                         .foregroundStyle(Color.white.opacity(0.74))
-                        .multilineTextAlignment(.trailing)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(2)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -43,7 +43,7 @@ struct Air2ConcertImportHost<Content: View>: View {
                         } else {
                             Image(systemName: "folder.badge.plus")
                         }
-                        Text(isImporting ? "IMPORTING…" : "IMPORT CONCERTRESOURCES")
+                        Text(isImporting ? "IMPORTING…" : "IMPORT")
                     }
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(Color(red: 0.96, green: 0.91, blue: 0.78))
@@ -59,7 +59,7 @@ struct Air2ConcertImportHost<Content: View>: View {
                 .buttonStyle(.plain)
                 .disabled(isImporting)
             }
-            .padding(.trailing, 18)
+            .padding(.leading, 18)
             .padding(.bottom, 14)
         }
         .fileImporter(
