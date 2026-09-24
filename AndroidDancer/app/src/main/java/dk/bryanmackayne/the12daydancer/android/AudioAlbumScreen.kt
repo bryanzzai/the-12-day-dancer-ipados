@@ -124,7 +124,7 @@ fun AudioAlbumScreen(
         album.tracks.withIndex().filter { q.isEmpty() || it.value.title.contains(q, ignoreCase = true) }
     }
 
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(
@@ -134,6 +134,9 @@ fun AudioAlbumScreen(
                 )
             )
     ) {
+        val tabletLayout = maxWidth >= 600.dp
+        val horizontalPadding = if (tabletLayout) 20.dp else 10.dp
+        val panelWidth = if (tabletLayout) Modifier else Modifier.widthIn(max = 430.dp)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 54.dp),
@@ -141,7 +144,7 @@ fun AudioAlbumScreen(
         ) {
             item {
                 AlbumTopBar(album.title, onBack)
-                Box(Modifier.widthIn(max = 430.dp).fillMaxWidth().padding(horizontal = 10.dp)) {
+                Box(panelWidth.fillMaxWidth().padding(horizontal = horizontalPadding)) {
                     AlbumHero(resources, album)
                 }
                 Spacer(Modifier.height(16.dp))
@@ -181,16 +184,16 @@ fun AudioAlbumScreen(
                                 status = "playing"
                             }
                         },
+                        tabletLayout = tabletLayout,
                     )
                     Spacer(Modifier.height(16.dp))
                 }
 
                 item {
                     Column(
-                        modifier = Modifier
-                            .widthIn(max = 430.dp)
+                        modifier = panelWidth
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp)
+                            .padding(horizontal = horizontalPadding)
                             .clip(RoundedCornerShape(22.dp))
                             .background(Color.Black.copy(alpha = 0.44f)),
                     ) {
@@ -232,6 +235,7 @@ fun AudioAlbumScreen(
                         isPlaying = isPlaying,
                         onSelect = { loadTrack(indexed.index, true) },
                         onArtwork = { artworkIndex = indexed.index },
+                        tabletLayout = tabletLayout,
                     )
                 }
             }
@@ -299,13 +303,13 @@ private fun NowPlayingPanel(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onPlayPause: () -> Unit,
+    tabletLayout: Boolean,
 ) {
     val track = album.tracks[index]
     Column(
-        modifier = Modifier
-            .widthIn(max = 430.dp)
+        modifier = (if (tabletLayout) Modifier else Modifier.widthIn(max = 430.dp))
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
+            .padding(horizontal = if (tabletLayout) 20.dp else 10.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.075f), Color.Black.copy(alpha = 0.28f))))
             .padding(18.dp),
@@ -316,7 +320,7 @@ private fun NowPlayingPanel(
             resources,
             track.artworkResource,
             Modifier
-                .size(278.dp)
+                .size(if (tabletLayout) 360.dp else 278.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .clickable(onClick = onArtwork),
             ContentScale.Crop,
@@ -403,12 +407,12 @@ private fun TrackRow(
     isPlaying: Boolean,
     onSelect: () -> Unit,
     onArtwork: () -> Unit,
+    tabletLayout: Boolean,
 ) {
     Row(
-        modifier = Modifier
-            .widthIn(max = 430.dp)
+        modifier = (if (tabletLayout) Modifier else Modifier.widthIn(max = 430.dp))
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
+            .padding(horizontal = if (tabletLayout) 20.dp else 10.dp)
             .background(if (isCurrent) Color.White.copy(alpha = 0.06f) else Color.Transparent)
             .padding(horizontal = 13.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
