@@ -80,7 +80,7 @@ jobs:
           if (c.albums.length !== 12) throw new Error(`albums=${c.albums.length}`);
           const audio = c.albums.reduce((n,a) => n + a.tracks.length, 0);
           const video = c.albums.reduce((n,a) => n + a.films.length, 0);
-          if (audio !== 229 || video !== 9) throw new Error(`audio=${audio} video=${video}`);
+          if (audio !== 245 || video !== 9) throw new Error(`audio=${audio} video=${video}`);
           console.log(`Verified Android catalog: ${c.albums.length} albums, ${audio} tracks, ${video} films`);
           NODE
 
