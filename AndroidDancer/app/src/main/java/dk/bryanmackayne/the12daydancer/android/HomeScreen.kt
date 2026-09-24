@@ -34,6 +34,8 @@ fun HomeScreen(
     openAlbum: (AlbumDefinition) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        val isTablet = maxWidth >= 600.dp
+        val pagePadding = if (isTablet) 20.dp else 10.dp
         val facadeSpacerHeight = if (maxHeight >= maxWidth) {
             (maxHeight * 0.89f).coerceAtLeast(270.dp)
         } else {
@@ -64,7 +66,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 18.dp),
+                .padding(horizontal = pagePadding, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             DancerMast()
@@ -73,17 +75,18 @@ fun HomeScreen(
                 resources = resources,
                 albums = catalog.albums,
                 openAlbum = openAlbum,
-                modifier = Modifier.widthIn(max = 430.dp),
+                tabletLayout = isTablet,
+                modifier = if (isTablet) Modifier else Modifier.widthIn(max = 430.dp),
             )
             Spacer(Modifier.height(16.dp))
-            ResourceFolderPanel(resources, chooseResourceFolder)
+            ResourceFolderPanel(resources, chooseResourceFolder, isTablet)
             Spacer(Modifier.height(18.dp))
             Text(
                 "Bryan MacKayne · The 12 Day Dancer",
                 color = Color.White.copy(alpha = 0.42f),
                 fontSize = 9.sp,
                 letterSpacing = 1.5.sp,
-                modifier = Modifier.widthIn(max = 430.dp).fillMaxWidth(),
+                modifier = (if (isTablet) Modifier else Modifier.widthIn(max = 430.dp)).fillMaxWidth(),
                 textAlign = TextAlign.End,
             )
         }
@@ -95,8 +98,11 @@ private fun ConcertConsole(
     resources: ResourceStore,
     albums: List<AlbumDefinition>,
     openAlbum: (AlbumDefinition) -> Unit,
+    tabletLayout: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val columns = if (tabletLayout) 3 else 2
+    val rowHeight = if (tabletLayout) 194.dp else 148.dp
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -135,21 +141,26 @@ private fun ConcertConsole(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.height(((albums.size + 1) / 2 * 148).dp),
+            columns = GridCells.Fixed(columns),
+            modifier = Modifier.height(((albums.size + columns - 1) / columns * rowHeight.value).dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             userScrollEnabled = false,
         ) {
             items(albums, key = { it.slug }) { album ->
-                AlbumButton(resources, album, onClick = { openAlbum(album) })
+                AlbumButton(resources, album, tabletLayout, onClick = { openAlbum(album) })
             }
         }
     }
 }
 
 @Composable
-private fun AlbumButton(resources: ResourceStore, album: AlbumDefinition, onClick: () -> Unit) {
+private fun AlbumButton(
+    resources: ResourceStore,
+    album: AlbumDefinition,
+    tabletLayout: Boolean,
+    onClick: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -157,7 +168,7 @@ private fun AlbumButton(resources: ResourceStore, album: AlbumDefinition, onClic
             .background(Color.Black)
             .clickable(onClick = onClick),
     ) {
-        Box(Modifier.fillMaxWidth().height(92.dp)) {
+        Box(Modifier.fillMaxWidth().height(if (tabletLayout) 132.dp else 92.dp)) {
             ResourceImage(resources, album.bannerResource, Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxSize().background(
@@ -176,7 +187,7 @@ private fun AlbumButton(resources: ResourceStore, album: AlbumDefinition, onClic
         Box(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp)
+                .heightIn(min = if (tabletLayout) 50.dp else 44.dp)
                 .background(
                     Brush.verticalGradient(listOf(Color(0xFF2E2417), Color(0xFF0D0A08)))
                 )
@@ -198,10 +209,14 @@ private fun AlbumButton(resources: ResourceStore, album: AlbumDefinition, onClic
 }
 
 @Composable
-private fun ResourceFolderPanel(resources: ResourceStore, chooseResourceFolder: () -> Unit) {
+private fun ResourceFolderPanel(
+    resources: ResourceStore,
+    chooseResourceFolder: () -> Unit,
+    tabletLayout: Boolean,
+) {
     Column(
         modifier = Modifier
-            .widthIn(max = 430.dp)
+            .then(if (tabletLayout) Modifier else Modifier.widthIn(max = 430.dp))
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Color.Black.copy(alpha = 0.62f))
