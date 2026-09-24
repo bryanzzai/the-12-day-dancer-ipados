@@ -16,7 +16,7 @@ const EXPECTED = {
   'dies-felis': 24,
   'dies-tauri': 8,
   'dies-ursi': 24,
-  'dies-apri': 8,
+  'dies-apri': 24,
   'dies-akita': 9,
 };
 
@@ -191,7 +191,7 @@ for (const album of albums) {
   }
 }
 
-if (audioCount !== 229 || videoCount !== 9 || artCount !== 229) {
+if (audioCount !== 245 || videoCount !== 9 || artCount !== 245) {
   throw new Error(`Catalog count mismatch audio=${audioCount} video=${videoCount} art=${artCount}`);
 }
 
@@ -226,7 +226,7 @@ fs.writeFileSync(outputManifest, manifest);
 
 console.log(`Android catalog source: ${sourceCommit}`);
 console.log(`Albums: ${cleanAlbums.length}/12`);
-console.log(`Audio: ${audioCount}/229`);
+console.log(`Audio: ${audioCount}/245`);
 console.log(`Video: ${videoCount}/9`);
-console.log(`Artwork: ${artCount}/229`);
+console.log(`Artwork: ${artCount}/245`);
 console.log(`Manifest resources: ${resources.length}`);
