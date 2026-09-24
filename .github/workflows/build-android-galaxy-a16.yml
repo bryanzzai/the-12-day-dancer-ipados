@@ -1,9 +1,9 @@
-name: Build The 12 Day Dancer Android Galaxy A16
+name: Build The 12 Day Dancer Android Galaxy Tab A SM-T515
 
 on:
   workflow_dispatch:
   push:
-    branches: [android-galaxy-a16]
+    branches: [android-galaxy-a16, galaxy-tab-a-sm-t515]
     paths:
       - 'AndroidDancer/**'
       - 'Scripts/generate_android_catalog.mjs'
@@ -94,16 +94,16 @@ jobs:
           APK='AndroidDancer/app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
           mkdir -p delivery
-          cp "$APK" 'delivery/The-12-Day-Dancer-Galaxy-A16-v0.1-debug.apk'
+          cp "$APK" 'delivery/The-12-Day-Dancer-Galaxy-Tab-A-SM-T515-v0.1-debug.apk'
           cp AndroidDancer/generated/ConcertResources-manifest.tsv delivery/
           cp SOURCE-SITE-COMMIT.txt delivery/
-          sha256sum delivery/The-12-Day-Dancer-Galaxy-A16-v0.1-debug.apk | tee delivery/SHA256.txt
+          sha256sum delivery/The-12-Day-Dancer-Galaxy-Tab-A-SM-T515-v0.1-debug.apk | tee delivery/SHA256.txt
           ls -lh delivery/
 
-      - name: Upload Galaxy A16 package
+      - name: Upload Galaxy Tab A package
         uses: actions/upload-artifact@v4
         with:
-          name: The-12-Day-Dancer-Galaxy-A16-v0.1
+          name: The-12-Day-Dancer-Galaxy-Tab-A-SM-T515-v0.1
           path: delivery/
           if-no-files-found: error
           retention-days: 30
