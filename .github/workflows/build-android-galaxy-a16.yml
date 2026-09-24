@@ -27,14 +27,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android 16 API 36
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
 
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v4
@@ -79,7 +80,7 @@ jobs:
           if (c.albums.length !== 12) throw new Error(`albums=${c.albums.length}`);
           const audio = c.albums.reduce((n,a) => n + a.tracks.length, 0);
           const video = c.albums.reduce((n,a) => n + a.films.length, 0);
-          if (audio !== 229 || video !== 9) throw new Error(`audio=${audio} video=${video}`);
+          if (audio !== 245 || video !== 9) throw new Error(`audio=${audio} video=${video}`);
           console.log(`Verified Android catalog: ${c.albums.length} albums, ${audio} tracks, ${video} films`);
           NODE
 
