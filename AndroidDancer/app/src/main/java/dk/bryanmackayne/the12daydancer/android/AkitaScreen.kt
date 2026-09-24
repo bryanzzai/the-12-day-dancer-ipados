@@ -77,7 +77,7 @@ fun VideoAlbumScreen(
         onDispose { player.release() }
     }
 
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(
@@ -87,6 +87,9 @@ fun VideoAlbumScreen(
                 )
             )
     ) {
+        val tabletLayout = maxWidth >= 600.dp
+        val horizontalPadding = if (tabletLayout) 20.dp else 10.dp
+        val panelWidth = if (tabletLayout) Modifier else Modifier.widthIn(max = 430.dp)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 54.dp),
@@ -94,7 +97,7 @@ fun VideoAlbumScreen(
         ) {
             item {
                 AkitaTopBar(album.title, onBack)
-                Box(Modifier.widthIn(max = 430.dp).fillMaxWidth().padding(horizontal = 10.dp)) {
+                Box(panelWidth.fillMaxWidth().padding(horizontal = horizontalPadding)) {
                     AlbumHero(resources, album)
                 }
                 Spacer(Modifier.height(16.dp))
@@ -103,10 +106,9 @@ fun VideoAlbumScreen(
             if (album.films.isNotEmpty()) {
                 item {
                     Column(
-                        modifier = Modifier
-                            .widthIn(max = 430.dp)
+                        modifier = panelWidth
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp)
+                            .padding(horizontal = horizontalPadding)
                             .clip(RoundedCornerShape(22.dp))
                             .background(Color.White.copy(alpha = 0.055f))
                             .padding(14.dp),
@@ -188,10 +190,9 @@ fun VideoAlbumScreen(
 
                 item {
                     Column(
-                        modifier = Modifier
-                            .widthIn(max = 430.dp)
+                        modifier = panelWidth
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp)
+                            .padding(horizontal = horizontalPadding)
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.Black.copy(alpha = 0.42f))
                             .padding(14.dp),
@@ -214,10 +215,9 @@ fun VideoAlbumScreen(
 
                 itemsIndexed(album.films, key = { _, film -> film.mediaResource }) { index, film ->
                     Row(
-                        modifier = Modifier
-                            .widthIn(max = 430.dp)
+                        modifier = panelWidth
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp)
+                            .padding(horizontal = horizontalPadding)
                             .clip(RoundedCornerShape(12.dp))
                             .background(if (index == currentIndex) Color.White.copy(alpha = 0.07f) else Color.Transparent)
                             .clickable { play(index) }
