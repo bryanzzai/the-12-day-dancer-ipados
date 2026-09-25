@@ -82,7 +82,7 @@ fun HomeScreen(
             ResourceFolderPanel(resources, chooseResourceFolder, isTablet)
             Spacer(Modifier.height(18.dp))
             Text(
-                "Bryan MacKayne Â· The 12 Day Dancer",
+                "Bryan MacKayne · The 12 Day Dancer",
                 color = Color.White.copy(alpha = 0.42f),
                 fontSize = 9.sp,
                 letterSpacing = 1.5.sp,
@@ -125,14 +125,14 @@ private fun ConcertConsole(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                "SELECTIO Â· XII ALBUM",
+                "SELECTIO · XII ALBUM",
                 color = Color(0xFFD1B880),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.7.sp,
             )
             Text(
-                "ÐÐÐ¥ÐÐÐÐ§ÐÐ ÐÐ£ÐÐ¢ Â· Ð ÐªÐ§ÐÐ Ð£ÐÐ ÐÐÐÐÐÐÐ",
+                "МЕХАНИЧЕН ПУЛТ · РЪЧНО УПРАВЛЕНИЕ",
                 color = Color(0xFF8A7D63),
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
@@ -231,7 +231,7 @@ private fun ResourceFolderPanel(
             letterSpacing = 1.4.sp,
         )
         Text(
-            if (resources.hasRoot) "${resources.rootLabel} Â· ${resources.indexedResourceCount()} resources"
+            if (resources.hasRoot) "${resources.rootLabel} · ${resources.indexedResourceCount()} resources"
             else "Choose the existing ConcertResources folder once. Android remembers the permission.",
             color = Color.White.copy(alpha = 0.68f),
             fontSize = 11.sp,
